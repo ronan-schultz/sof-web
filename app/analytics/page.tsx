@@ -1,6 +1,29 @@
 "use client";
 
-import { useState, FormEvent } from "react";
+import { useState, useMemo, FormEvent } from "react";
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend,
+} from "chart.js";
+import { Bar, Line } from "react-chartjs-2";
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,
+  PointElement,
+  Title,
+  Tooltip,
+  Legend
+);
 
 interface AnalyticsResult {
   sql: string;
@@ -38,6 +61,22 @@ export default function AnalyticsPage() {
 
   const isSingleValue =
     result?.rows?.length === 1 && result.columns?.length === 1;
+
+  const chartInfo = useMemo(() => {
+    const rows = result?.rows;
+    if (!rows || rows.length < 2 || rows.length > 50) return null;
+    const keys = Object.keys(rows[0]);
+    if (keys.length !== 2) return null;
+    const [labelKey, valueKey] = keys;
+    const values = rows.map((r) => Number(r[valueKey]));
+    if (!values.every((v) => isFinite(v))) return null;
+    const labels = rows.map((r) => String(r[labelKey]));
+    const isYearLike = labels.every((l) => {
+      const n = Number(l);
+      return Number.isInteger(n) && n >= 1990 && n <= 2040;
+    });
+    return { labelKey, valueKey, labels, values, isYearLike };
+  }, [result?.rows]);
 
   return (
     <div className="max-w-6xl mx-auto">
@@ -86,6 +125,63 @@ export default function AnalyticsPage() {
               </div>
               <div className="text-3xl font-semibold">
                 {formatCell(result.rows[0][result.columns[0]])}
+              </div>
+            </div>
+          )}
+
+          {/* Chart */}
+          {chartInfo && !isSingleValue && (
+            <div>
+              <div className="text-xs text-gray-500 mb-2">Chart</div>
+              <div className="h-64">
+                {chartInfo.isYearLike ? (
+                  <Line
+                    data={{
+                      labels: chartInfo.labels,
+                      datasets: [
+                        {
+                          data: chartInfo.values,
+                          borderColor: "rgb(59, 130, 246)",
+                          backgroundColor: "rgba(59, 130, 246, 0.1)",
+                          tension: 0.3,
+                          fill: true,
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: { legend: { display: false } },
+                      scales: {
+                        x: { title: { display: true, text: chartInfo.labelKey } },
+                        y: { title: { display: true, text: chartInfo.valueKey } },
+                      },
+                    }}
+                  />
+                ) : (
+                  <Bar
+                    data={{
+                      labels: chartInfo.labels,
+                      datasets: [
+                        {
+                          data: chartInfo.values,
+                          backgroundColor: "rgba(59, 130, 246, 0.7)",
+                          borderColor: "rgb(59, 130, 246)",
+                          borderWidth: 1,
+                        },
+                      ],
+                    }}
+                    options={{
+                      responsive: true,
+                      maintainAspectRatio: false,
+                      plugins: { legend: { display: false } },
+                      scales: {
+                        x: { title: { display: true, text: chartInfo.labelKey } },
+                        y: { title: { display: true, text: chartInfo.valueKey } },
+                      },
+                    }}
+                  />
+                )}
               </div>
             </div>
           )}
