@@ -110,14 +110,47 @@ export async function POST(req: NextRequest) {
         [experimentId, fork_from]
       );
     } else {
-      // Seed from live scorer_config
-      await query(
-        `INSERT INTO sandbox_configs (experiment_id, strategy, category, key, value, label)
-         SELECT $1, strategy, category, key, value, label
-         FROM scorer_config
-         WHERE strategy = $2 OR strategy = 'global'`,
-        [experimentId, strategy]
+      // Seed from live scorer_config — decompose nested weights into flat rows
+      const liveConfigs = await query<{
+        strategy: string;
+        category: string;
+        key: string;
+        value: unknown;
+        label: string | null;
+      }>(
+        `SELECT strategy, category, key, value, label FROM scorer_config WHERE strategy = $1 OR strategy = 'global'`,
+        [strategy]
       );
+      for (const c of liveConfigs) {
+        if (
+          c.key === 'weights' &&
+          c.category === 'weight' &&
+          typeof c.value === 'object' &&
+          c.value !== null
+        ) {
+          const w = c.value as Record<string, number>;
+          const map: [string, string, string][] = [
+            ['intent', 'intent_weight', 'Intent Weight'],
+            ['ownership', 'ownership_weight', 'Ownership Weight'],
+            ['activist_quality', 'quality_weight', 'Quality Weight'],
+          ];
+          for (const [factor, dbKey, label] of map) {
+            await query(
+              `INSERT INTO sandbox_configs (experiment_id, strategy, category, key, value, label)
+               VALUES ($1, $2, $3, $4, $5, $6)
+               ON CONFLICT (experiment_id, strategy, key) DO UPDATE SET value = EXCLUDED.value`,
+              [experimentId, c.strategy, 'weight', dbKey, JSON.stringify(w[factor] ?? 0), label]
+            );
+          }
+        } else {
+          await query(
+            `INSERT INTO sandbox_configs (experiment_id, strategy, category, key, value, label)
+             VALUES ($1, $2, $3, $4, $5, $6)
+             ON CONFLICT (experiment_id, strategy, key) DO UPDATE SET value = EXCLUDED.value`,
+            [experimentId, c.strategy, c.category, c.key, JSON.stringify(c.value), c.label]
+          );
+        }
+      }
     }
 
     return NextResponse.json({ id: experimentId }, { status: 201 });

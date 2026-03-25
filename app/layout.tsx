@@ -22,6 +22,7 @@ export default function RootLayout({
             <a href="/" className="hover:text-gray-300 transition-colors">Dashboard</a>
             <a href="/admin" className="hover:text-gray-300 transition-colors">Admin</a>
             <a href="/sandbox" className="hover:text-gray-300 transition-colors">Sandbox</a>
+            <a href="/analytics" className="hover:text-gray-300 transition-colors">Analytics</a>
           </nav>
         </header>
         <main className="px-6 py-6">{children}</main>

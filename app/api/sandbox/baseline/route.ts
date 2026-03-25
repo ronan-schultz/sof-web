@@ -8,7 +8,7 @@ interface ConfigRow {
 
 interface BacktestCandidate {
   filing_id: string;
-  filing_date: string | null;
+  filing_date: string | Date | null;
   intent_score: number | null;
   ownership_percent: number | null;
   activist_prior_wins: number | null;
@@ -81,8 +81,9 @@ export async function GET() {
     });
 
     // Temporal split
-    function filingYear(d: string | null): number {
+    function filingYear(d: string | Date | null): number {
       if (!d) return 0;
+      if (d instanceof Date) return d.getFullYear();
       return parseInt(String(d).slice(0, 4), 10);
     }
 
