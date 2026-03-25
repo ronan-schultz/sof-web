@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* Sticky first column in horizontally-scrollable table */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
