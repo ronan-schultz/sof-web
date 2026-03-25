@@ -154,9 +154,58 @@ CREATE TABLE audit_log (
     details TEXT,
     success INTEGER DEFAULT 1
 );
+
+-- Activism backtest: one row per SC 13D filing processed
+CREATE TABLE activism_backtest_candidates (
+  id SERIAL PRIMARY KEY,
+  filing_id TEXT UNIQUE,
+  cik TEXT,                        -- target company CIK
+  company_name TEXT,               -- target company name
+  ticker TEXT,
+  investor_name TEXT,              -- activist investor name (e.g. 'Carl Icahn')
+  filing_date DATE,
+  form_type TEXT,
+  ownership_percent REAL,          -- % ownership disclosed
+  prior_ownership_percent REAL,
+  intent_category TEXT,            -- 'passive', 'active', or 'control'
+  intent_score REAL,               -- 0-1 NLP score from Item 4
+  activist_prior_wins INTEGER,
+  composite_score REAL,            -- 0.45*intent + 0.25*ownership + 0.30*quality
+  mcap_tag TEXT DEFAULT 'unknown',
+  hold_horizon TEXT,               -- '90d' or '270d'
+  created_at TIMESTAMPTZ
+);
+
+-- Returns for activism backtest candidates at 6 windows
+CREATE TABLE activism_backtest_returns (
+  id SERIAL PRIMARY KEY,
+  filing_id TEXT REFERENCES activism_backtest_candidates(filing_id),
+  ticker TEXT,
+  window_days INTEGER,             -- 30, 60, 90, 120, 180, or 270
+  price_start REAL,
+  price_end REAL,
+  raw_return REAL,
+  iwm_start REAL,
+  iwm_end REAL,
+  iwm_return REAL,
+  excess_return REAL,              -- raw_return - iwm_return
+  is_winner BOOLEAN,               -- excess_return > 0
+  data_complete BOOLEAN,
+  created_at TIMESTAMPTZ
+);
+
+-- Known activist investors with track record
+CREATE TABLE activist_registry (
+  investor_name TEXT PRIMARY KEY,  -- e.g. 'Elliott Management', 'Carl Icahn'
+  prior_wins INTEGER,
+  prior_campaigns INTEGER DEFAULT 0,
+  first_seen_date DATE,
+  last_seen_date DATE,
+  notes TEXT
+);
 `.trim();
 
-export const SYSTEM_PROMPT = `You are a SQL assistant for a PostgreSQL database that tracks SEC spin-off filings, market data, and an investment screening pipeline.
+export const SYSTEM_PROMPT = `You are a SQL assistant for a PostgreSQL database that tracks SEC filings, market data, and an investment screening pipeline for two strategies: (1) spin-offs — detected via Form 10/10-12B/10-12G filings, scored and tracked in filings/market_data/returns/scored_candidates; (2) activism — SC 13D filings tracked in activism_backtest_candidates with returns in activism_backtest_returns and investor history in activist_registry. Use activism_backtest_candidates for any questions about activists, campaigns, ownership, or intent. Use filings/returns for spinoff questions.
 
 Given the user's question, return ONLY a valid PostgreSQL SELECT query. No explanation, no markdown, no commentary — just the SQL.
 
