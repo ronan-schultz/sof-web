@@ -150,14 +150,6 @@ export default function CandidatesDashboard() {
       ).toFixed(2)
     : "\u2014";
 
-  const lastUpdated = candidates.length
-    ? formatDate(
-        candidates.reduce((latest, c) =>
-          c.scored_at > latest.scored_at ? c : latest
-        ).scored_at
-      )
-    : "\u2014";
-
   const pendingCount = candidates.filter((c) => {
     const elapsed = Date.now() - new Date(c.scored_at).getTime();
     return elapsed > 24 * 60 * 60 * 1000;
@@ -303,11 +295,10 @@ export default function CandidatesDashboard() {
             }
           />
 
-          <div className="grid grid-cols-4 gap-8 mb-6">
+          <div className="grid grid-cols-3 gap-8 mb-6">
             <Stat label="Total Candidates" value={String(candidates.length)} />
             <Stat label="High Conviction" value={String(highConviction)} />
             <Stat label="Avg Score" value={avgScore} />
-            <Stat label="Last Updated" value={lastUpdated} />
           </div>
 
           {pendingCount > 0 && !alertDismissed && (
