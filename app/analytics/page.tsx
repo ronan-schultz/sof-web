@@ -1,29 +1,17 @@
 "use client";
 
 import { useState, useMemo, FormEvent } from "react";
+import AppLayout from "@/app/components/AppLayout";
 import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
-import { Bar, Line } from "react-chartjs-2";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend
-);
+  PageHeader,
+  Card,
+  Button,
+  EmptyState,
+  AlertBanner,
+  DataTable,
+  MetricCell,
+} from "@/components/ui";
+import { type Column } from "@/components/ui/DataTable";
 
 interface AnalyticsResult {
   sql: string;
@@ -32,10 +20,20 @@ interface AnalyticsResult {
   error?: string;
 }
 
+function formatCell(value: unknown): string {
+  if (value === null || value === undefined) return "\u2014";
+  if (typeof value === "number") {
+    if (Number.isInteger(value)) return value.toLocaleString();
+    return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  }
+  return String(value);
+}
+
 export default function AnalyticsPage() {
   const [question, setQuestion] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AnalyticsResult | null>(null);
+  const [sqlExpanded, setSqlExpanded] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -71,182 +69,165 @@ export default function AnalyticsPage() {
     const values = rows.map((r) => Number(r[valueKey]));
     if (!values.every((v) => isFinite(v))) return null;
     const labels = rows.map((r) => String(r[labelKey]));
-    const isYearLike = labels.every((l) => {
-      const n = Number(l);
-      return Number.isInteger(n) && n >= 1990 && n <= 2040;
-    });
-    return { labelKey, valueKey, labels, values, isYearLike };
+    const maxVal = Math.max(...values.map(Math.abs));
+    return { labelKey, valueKey, labels, values, maxVal };
   }, [result?.rows]);
 
+  // Build DataTable columns from result
+  const tableColumns: Column<Record<string, unknown>>[] = useMemo(() => {
+    if (!result?.columns) return [];
+    return result.columns.map((col) => ({
+      key: col,
+      label: col,
+      sortable: true,
+      render: (row: Record<string, unknown>) => {
+        const val = row[col];
+        if (typeof val === "number") {
+          return <MetricCell value={val} format="decimal" />;
+        }
+        return (
+          <span className="text-sm text-ink-primary">{formatCell(val)}</span>
+        );
+      },
+    }));
+  }, [result?.columns]);
+
   return (
-    <div className="max-w-6xl mx-auto">
-      <h2 className="text-2xl font-semibold mb-1">Analytics</h2>
-      <p className="text-sm text-gray-500 mb-6">
-        Ask a question about the database in plain English.
-      </p>
+    <AppLayout>
+      <div className="relative">
+        {loading && (
+          <div className="absolute top-0 left-0 right-0 h-px bg-signal-mid animate-pulse" />
+        )}
 
-      <form onSubmit={handleSubmit} className="flex gap-3 mb-6">
-        <input
-          type="text"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          placeholder='e.g. "What is the average days from filing to first trade?"'
-          className="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          disabled={loading}
-        />
-        <button
-          type="submit"
-          disabled={loading || !question.trim()}
-          className="bg-gray-900 text-white px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-        >
-          {loading ? "Running..." : "Ask"}
-        </button>
-      </form>
+        <div className="p-6 max-w-4xl">
+          <PageHeader
+            title="Analytics"
+            subtitle="Natural language queries against the SOF database"
+          />
 
-      {loading && (
-        <div className="text-sm text-gray-500 animate-pulse">
-          Generating and executing query...
-        </div>
-      )}
+          {/* Query input */}
+          <Card>
+            <form onSubmit={handleSubmit} className="space-y-3">
+              <textarea
+                value={question}
+                onChange={(e) => setQuestion(e.target.value)}
+                rows={4}
+                placeholder="e.g. What is the average excess return for activism candidates by intent category?"
+                className="w-full px-3 py-2 rounded-md text-sm bg-surface-sunken text-ink-primary resize-none"
+                disabled={loading}
+              />
+              <Button
+                variant="primary"
+                size="md"
+                type="submit"
+                disabled={loading || !question.trim()}
+              >
+                {loading ? "Running..." : "Run Query"}
+              </Button>
+            </form>
+          </Card>
 
-      {result?.error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-          {result.error}
-        </div>
-      )}
-
-      {result && !result.error && (
-        <div className="space-y-4">
-          {/* Single value result */}
-          {isSingleValue && result.rows && result.columns && (
-            <div className="bg-white border border-gray-200 rounded-lg px-6 py-5">
-              <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">
-                {result.columns[0]}
-              </div>
-              <div className="text-3xl font-semibold">
-                {formatCell(result.rows[0][result.columns[0]])}
-              </div>
+          {/* Error */}
+          {result?.error && (
+            <div className="mt-4">
+              <AlertBanner variant="critical" message={result.error} />
             </div>
           )}
 
-          {/* Chart */}
-          {chartInfo && !isSingleValue && (
-            <div>
-              <div className="text-xs text-gray-500 mb-2">Chart</div>
-              <div className="h-64">
-                {chartInfo.isYearLike ? (
-                  <Line
-                    data={{
-                      labels: chartInfo.labels,
-                      datasets: [
-                        {
-                          data: chartInfo.values,
-                          borderColor: "rgb(59, 130, 246)",
-                          backgroundColor: "rgba(59, 130, 246, 0.1)",
-                          tension: 0.3,
-                          fill: true,
-                        },
-                      ],
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: { legend: { display: false } },
-                      scales: {
-                        x: { title: { display: true, text: chartInfo.labelKey } },
-                        y: { title: { display: true, text: chartInfo.valueKey } },
-                      },
-                    }}
+          {/* Results */}
+          {result && !result.error && (
+            <div className="mt-6 space-y-4">
+              {/* Single value result */}
+              {isSingleValue && result.rows && result.columns && (
+                <Card>
+                  <p className="text-xs text-ink-tertiary uppercase tracking-wider mb-1">
+                    {result.columns[0]}
+                  </p>
+                  <p className="text-3xl font-semibold font-mono text-ink-primary">
+                    {formatCell(result.rows[0][result.columns[0]])}
+                  </p>
+                </Card>
+              )}
+
+              {/* CSS bar chart */}
+              {chartInfo && !isSingleValue && (
+                <Card title="Chart">
+                  <div className="space-y-1">
+                    {chartInfo.labels.map((label, i) => {
+                      const val = chartInfo.values[i];
+                      const width =
+                        chartInfo.maxVal > 0
+                          ? Math.abs(val) / chartInfo.maxVal
+                          : 0;
+                      return (
+                        <div key={i} className="flex items-center gap-2">
+                          <span className="w-32 text-xs text-ink-secondary truncate text-right">
+                            {label}
+                          </span>
+                          <div className="flex-1 h-5 bg-surface-sunken rounded-sm overflow-hidden">
+                            <div
+                              className="h-full bg-signal-high/40 rounded-sm"
+                              style={{ width: `${width * 100}%` }}
+                            />
+                          </div>
+                          <span className="w-16 text-xs font-mono text-ink-tertiary text-right">
+                            {formatCell(val)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              )}
+
+              {/* Table result */}
+              {!isSingleValue && result.rows && result.rows.length > 0 && result.columns && (
+                <Card
+                  title="Results"
+                  action={
+                    result.sql ? (
+                      <button
+                        onClick={() => setSqlExpanded(!sqlExpanded)}
+                        className="text-xs text-ink-tertiary font-mono truncate max-w-xs"
+                      >
+                        {sqlExpanded ? result.sql : result.sql.slice(0, 60) + (result.sql.length > 60 ? "..." : "")}
+                      </button>
+                    ) : undefined
+                  }
+                >
+                  <p className="text-xs text-ink-tertiary mb-3">
+                    {result.rows.length} row{result.rows.length !== 1 ? "s" : ""}
+                  </p>
+                  <DataTable
+                    columns={tableColumns}
+                    data={result.rows}
                   />
-                ) : (
-                  <Bar
-                    data={{
-                      labels: chartInfo.labels,
-                      datasets: [
-                        {
-                          data: chartInfo.values,
-                          backgroundColor: "rgba(59, 130, 246, 0.7)",
-                          borderColor: "rgb(59, 130, 246)",
-                          borderWidth: 1,
-                        },
-                      ],
-                    }}
-                    options={{
-                      responsive: true,
-                      maintainAspectRatio: false,
-                      plugins: { legend: { display: false } },
-                      scales: {
-                        x: { title: { display: true, text: chartInfo.labelKey } },
-                        y: { title: { display: true, text: chartInfo.valueKey } },
-                      },
-                    }}
+                </Card>
+              )}
+
+              {/* No rows */}
+              {result.rows && result.rows.length === 0 && (
+                <Card>
+                  <EmptyState
+                    title="No rows returned"
+                    subtitle="The query executed successfully but returned no data."
                   />
-                )}
-              </div>
+                </Card>
+              )}
             </div>
           )}
 
-          {/* Table result */}
-          {!isSingleValue && result.rows && result.rows.length > 0 && result.columns && (
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="bg-gray-800 text-white text-left">
-                      {result.columns.map((col) => (
-                        <th key={col} className="px-4 py-2.5 font-medium whitespace-nowrap">
-                          {col}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.rows.map((row, i) => (
-                      <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
-                        {result.columns!.map((col) => (
-                          <td key={col} className="px-4 py-2 whitespace-nowrap">
-                            {formatCell(row[col])}
-                          </td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              <div className="text-xs text-gray-400 px-4 py-2 border-t border-gray-100">
-                {result.rows.length} row{result.rows.length !== 1 ? "s" : ""} returned
-              </div>
+          {/* Initial empty state */}
+          {!result && !loading && (
+            <div className="mt-8">
+              <EmptyState
+                title="Ask a question"
+                subtitle="Query the SOF database in plain English"
+              />
             </div>
-          )}
-
-          {/* No rows */}
-          {result.rows && result.rows.length === 0 && (
-            <div className="text-sm text-gray-500">No rows returned.</div>
-          )}
-
-          {/* Generated SQL */}
-          {result.sql && (
-            <details className="text-sm">
-              <summary className="cursor-pointer text-gray-500 hover:text-gray-700 select-none">
-                View generated SQL
-              </summary>
-              <pre className="mt-2 bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-xs leading-relaxed">
-                <code>{result.sql}</code>
-              </pre>
-            </details>
           )}
         </div>
-      )}
-    </div>
+      </div>
+    </AppLayout>
   );
-}
-
-function formatCell(value: unknown): string {
-  if (value === null || value === undefined) return "—";
-  if (typeof value === "number") {
-    // Format decimals nicely
-    if (Number.isInteger(value)) return value.toLocaleString();
-    return value.toLocaleString(undefined, { maximumFractionDigits: 4 });
-  }
-  return String(value);
 }

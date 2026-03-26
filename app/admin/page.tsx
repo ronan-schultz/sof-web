@@ -1,6 +1,16 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import AppLayout from "@/app/components/AppLayout";
+import {
+  PageHeader,
+  Card,
+  Button,
+  AlertBanner,
+  StatusBadge,
+  Divider,
+  EmptyState,
+} from "@/components/ui";
 
 // ── Types ────────────────────────────────────────────────────────────
 interface ConfigRow {
@@ -29,11 +39,17 @@ type Strategy = "spinoff" | "activism" | "global";
 
 // ── Toast ────────────────────────────────────────────────────────────
 function Toast({ msg, type, onClose }: { msg: string; type: "ok" | "err"; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
+  useEffect(() => {
+    const t = setTimeout(onClose, 3500);
+    return () => clearTimeout(t);
+  }, [onClose]);
   return (
-    <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded shadow-lg text-sm font-medium
-      ${type === "ok" ? "bg-green-600 text-white" : "bg-red-600 text-white"}`}>
-      {msg}
+    <div className="fixed top-4 right-4 z-50">
+      <AlertBanner
+        variant={type === "ok" ? "warning" : "critical"}
+        message={msg}
+        onDismiss={onClose}
+      />
     </div>
   );
 }
@@ -46,42 +62,44 @@ function WeightEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) =>
   const valid = Math.abs(sum - 1.0) < 0.001;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {Object.entries(draft).map(([k, v]) => (
-        <div key={k} className="flex items-center gap-3">
-          <label className="w-32 text-sm font-medium text-gray-700 capitalize">{k.replace("_", " ")}</label>
+        <Card key={k}>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-ink-secondary capitalize">
+              {k.replace("_", " ")}
+            </span>
+            <span className="font-mono text-sm text-ink-primary">{v.toFixed(2)}</span>
+          </div>
           <input
-            type="range" min={0} max={1} step={0.05} value={v}
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={v}
             onChange={(e) => setDraft({ ...draft, [k]: parseFloat(e.target.value) })}
-            className="flex-1"
+            className="w-full"
           />
-          <input
-            type="number" min={0} max={1} step={0.05} value={v}
-            onChange={(e) => setDraft({ ...draft, [k]: parseFloat(e.target.value) || 0 })}
-            className="w-20 px-2 py-1 border rounded text-sm tabular-nums text-right"
-          />
-        </div>
+        </Card>
       ))}
-      <div className="flex items-center gap-3 pt-1">
-        <span className={`text-sm font-medium ${valid ? "text-green-600" : "text-red-600"}`}>
-          Sum: {sum.toFixed(2)} {valid ? "" : "(must = 1.00)"}
-        </span>
-        <button
-          disabled={!valid}
-          onClick={() => onSave(draft)}
-          className="ml-auto px-3 py-1 text-sm rounded bg-gray-800 text-white disabled:opacity-40 hover:bg-gray-700 transition-colors"
-        >
+      {!valid && (
+        <AlertBanner
+          variant="critical"
+          message={`Weights must sum to 1.0 \u2014 current sum: ${sum.toFixed(2)}`}
+        />
+      )}
+      <div className="flex items-center justify-end gap-3">
+        <Button variant="primary" size="sm" disabled={!valid} onClick={() => onSave(draft)}>
           Save Weights
-        </button>
+        </Button>
       </div>
     </div>
   );
 }
 
-// ── Scalar Editor (number or string) ─────────────────────────────────
+// ── Scalar Editor ─────────────────────────────────────────────────────
 function ScalarEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => Promise<void> }) {
   const [draft, setDraft] = useState(String(row.value));
-
   const save = () => {
     const num = Number(draft);
     onSave(isNaN(num) ? draft : num);
@@ -92,17 +110,16 @@ function ScalarEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) =>
       <input
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
-        className="w-40 px-2 py-1 border rounded text-sm tabular-nums"
+        className="w-40 px-2 py-1 rounded-md text-sm font-mono tabular-nums bg-surface-sunken text-ink-primary"
       />
-      <button onClick={save}
-        className="px-3 py-1 text-sm rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors">
+      <Button variant="secondary" size="sm" onClick={save}>
         Save
-      </button>
+      </Button>
     </div>
   );
 }
 
-// ── Dict/Table Editor (form_type_scores, sector_scores, hold_horizons) ──
+// ── Dict Editor ──────────────────────────────────────────────────────
 function DictEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => Promise<void> }) {
   const obj = row.value as Record<string, number | string>;
   const [draft, setDraft] = useState<Record<string, number | string>>({ ...obj });
@@ -116,23 +133,24 @@ function DictEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => P
     <div className="space-y-1">
       {Object.entries(draft).map(([k, v]) => (
         <div key={k} className="flex items-center gap-2">
-          <span className="w-48 text-sm text-gray-600 truncate" title={k}>{k}</span>
+          <span className="w-48 text-sm text-ink-secondary truncate" title={k}>{k}</span>
           <input
             value={String(v)}
             onChange={(e) => update(k, e.target.value)}
-            className="w-24 px-2 py-0.5 border rounded text-sm tabular-nums text-right"
+            className="w-24 px-2 py-0.5 rounded-md text-sm font-mono tabular-nums text-right bg-surface-sunken text-ink-primary"
           />
         </div>
       ))}
-      <button onClick={() => onSave(draft)}
-        className="mt-2 px-3 py-1 text-sm rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors">
-        Save All
-      </button>
+      <div className="pt-2">
+        <Button variant="secondary" size="sm" onClick={() => onSave(draft)}>
+          Save All
+        </Button>
+      </div>
     </div>
   );
 }
 
-// ── Tier Editor (ownership_tiers, activist_quality_tiers) ────────────
+// ── Tier Editor ──────────────────────────────────────────────────────
 function TierEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => Promise<void> }) {
   const tiers = row.value as { max: number | null; score: number }[];
   const [draft, setDraft] = useState([...tiers]);
@@ -149,7 +167,7 @@ function TierEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => P
 
   return (
     <div className="space-y-1">
-      <div className="flex gap-2 text-xs font-medium text-gray-500 uppercase">
+      <div className="flex gap-2 text-xs font-medium text-ink-tertiary uppercase tracking-wider">
         <span className="w-20">Max</span>
         <span className="w-20">Score</span>
       </div>
@@ -159,83 +177,85 @@ function TierEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => P
             value={t.max === null ? "" : t.max}
             placeholder="unbounded"
             onChange={(e) => update(i, "max", e.target.value)}
-            className="w-20 px-2 py-0.5 border rounded text-sm tabular-nums text-right"
+            className="w-20 px-2 py-0.5 rounded-md text-sm font-mono tabular-nums text-right bg-surface-sunken text-ink-primary"
           />
           <input
             value={t.score}
             onChange={(e) => update(i, "score", e.target.value)}
-            className="w-20 px-2 py-0.5 border rounded text-sm tabular-nums text-right"
+            className="w-20 px-2 py-0.5 rounded-md text-sm font-mono tabular-nums text-right bg-surface-sunken text-ink-primary"
           />
         </div>
       ))}
-      <button onClick={() => onSave(draft)}
-        className="mt-2 px-3 py-1 text-sm rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors">
-        Save Tiers
-      </button>
+      <div className="pt-2">
+        <Button variant="secondary" size="sm" onClick={() => onSave(draft)}>
+          Save Tiers
+        </Button>
+      </div>
     </div>
   );
 }
 
-// ── Keyword Editor (intent_keywords) ─────────────────────────────────
+// ── Keyword Editor ───────────────────────────────────────────────────
 function KeywordEditor({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => Promise<void> }) {
   const keywords = row.value as { phrase: string; category: string; score: number }[];
   const [draft, setDraft] = useState([...keywords]);
+  const [newPhrase, setNewPhrase] = useState("");
+  const [newCategory, setNewCategory] = useState("passive");
 
-  const update = (i: number, field: string, val: string) => {
-    const next = [...draft];
-    if (field === "score") {
-      next[i] = { ...next[i], score: Number(val) };
-    } else {
-      next[i] = { ...next[i], [field]: val };
-    }
-    setDraft(next);
+  const addRow = () => {
+    if (!newPhrase.trim()) return;
+    setDraft([...draft, { phrase: newPhrase.trim(), category: newCategory, score: 0.1 }]);
+    setNewPhrase("");
   };
 
-  const addRow = () => setDraft([...draft, { phrase: "", category: "passive", score: 0.1 }]);
   const deleteRow = (i: number) => setDraft(draft.filter((_, idx) => idx !== i));
 
+  const categoryVariant = (cat: string): "spinoff" | "activism" | "pending" => {
+    if (cat === "active") return "activism";
+    if (cat === "control") return "spinoff";
+    return "pending";
+  };
+
   return (
-    <div className="space-y-1">
-      <div className="flex gap-2 text-xs font-medium text-gray-500 uppercase">
-        <span className="w-64">Phrase</span>
-        <span className="w-24">Category</span>
-        <span className="w-16">Score</span>
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1">
+        {draft.map((kw, i) => (
+          <span key={i} className="inline-flex items-center gap-1">
+            <StatusBadge variant={categoryVariant(kw.category)} label={kw.phrase} />
+            <button
+              onClick={() => deleteRow(i)}
+              className="text-ink-tertiary hover:text-ink-primary text-xs"
+              aria-label={`Remove ${kw.phrase}`}
+            >
+              x
+            </button>
+          </span>
+        ))}
       </div>
-      {draft.map((kw, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <input
-            value={kw.phrase}
-            onChange={(e) => update(i, "phrase", e.target.value)}
-            className="w-64 px-2 py-0.5 border rounded text-sm"
-          />
-          <select
-            value={kw.category}
-            onChange={(e) => update(i, "category", e.target.value)}
-            className="w-24 px-1 py-0.5 border rounded text-sm"
-          >
-            <option value="passive">passive</option>
-            <option value="active">active</option>
-            <option value="control">control</option>
-          </select>
-          <input
-            value={kw.score}
-            onChange={(e) => update(i, "score", e.target.value)}
-            className="w-16 px-2 py-0.5 border rounded text-sm tabular-nums text-right"
-          />
-          <button onClick={() => deleteRow(i)} className="text-red-500 text-sm hover:text-red-700 px-1">
-            x
-          </button>
-        </div>
-      ))}
-      <div className="flex gap-2 pt-1">
-        <button onClick={addRow}
-          className="px-3 py-1 text-sm rounded border border-gray-300 hover:bg-gray-100 transition-colors">
-          + Add Keyword
-        </button>
-        <button onClick={() => onSave(draft)}
-          className="px-3 py-1 text-sm rounded bg-gray-800 text-white hover:bg-gray-700 transition-colors">
+      <div className="flex items-center gap-2">
+        <input
+          value={newPhrase}
+          onChange={(e) => setNewPhrase(e.target.value)}
+          placeholder="New keyword..."
+          className="flex-1 px-2 py-1 rounded-md text-sm bg-surface-sunken text-ink-primary"
+        />
+        <select
+          value={newCategory}
+          onChange={(e) => setNewCategory(e.target.value)}
+          className="px-2 py-1 rounded-md text-sm bg-surface-sunken text-ink-primary"
+        >
+          <option value="passive">passive</option>
+          <option value="active">active</option>
+          <option value="control">control</option>
+        </select>
+        <Button variant="secondary" size="sm" onClick={addRow}>
+          Add
+        </Button>
+      </div>
+      <div className="pt-1">
+        <Button variant="primary" size="sm" onClick={() => onSave(draft)}>
           Save Keywords
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -264,17 +284,20 @@ function ConfigCard({ row, onSave }: { row: ConfigRow; onSave: (v: unknown) => P
   }
 
   return (
-    <div className="border border-gray-200 rounded-lg p-4 bg-white">
-      <div className="flex items-baseline justify-between mb-2">
-        <h3 className="font-medium text-gray-900">{row.label || row.key}</h3>
-        <span className="text-xs text-gray-400 font-mono">{row.category}</span>
-      </div>
-      {row.description && <p className="text-xs text-gray-500 mb-3">{row.description}</p>}
+    <Card
+      title={row.label || row.key}
+      action={
+        <span className="text-xs text-ink-tertiary font-mono">{row.category}</span>
+      }
+    >
+      {row.description && (
+        <p className="text-xs text-ink-tertiary mb-3">{row.description}</p>
+      )}
       {editor}
-      <p className="text-xs text-gray-400 mt-2">
+      <p className="text-xs text-ink-tertiary mt-3">
         Last updated: {row.updated_at} by {row.updated_by}
       </p>
-    </div>
+    </Card>
   );
 }
 
@@ -283,40 +306,43 @@ function AuditLog({ strategy }: { strategy: Strategy | null }) {
   const [rows, setRows] = useState<AuditRow[]>([]);
 
   useEffect(() => {
-    const url = strategy ? `/api/config/audit?strategy=${strategy}&limit=20` : `/api/config/audit?limit=20`;
-    fetch(url).then(r => r.json()).then(d => setRows(d.audit || [])).catch(() => {});
+    const url = strategy
+      ? `/api/config/audit?strategy=${strategy}&limit=20`
+      : `/api/config/audit?limit=20`;
+    fetch(url)
+      .then((r) => r.json())
+      .then((d) => setRows(d.audit || []))
+      .catch(() => {});
   }, [strategy]);
 
-  if (rows.length === 0) return <p className="text-sm text-gray-400">No changes recorded yet.</p>;
+  if (rows.length === 0) {
+    return (
+      <EmptyState
+        title="No changes recorded"
+        subtitle="Audit entries will appear here after config updates."
+      />
+    );
+  }
 
   return (
-    <div className="overflow-x-auto">
-      <table className="min-w-full text-xs">
-        <thead>
-          <tr className="bg-gray-100 text-left">
-            <th className="px-3 py-2 font-medium">Time</th>
-            <th className="px-3 py-2 font-medium">Key</th>
-            <th className="px-3 py-2 font-medium">Old</th>
-            <th className="px-3 py-2 font-medium">New</th>
-            <th className="px-3 py-2 font-medium">By</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-100">
-          {rows.map((r) => (
-            <tr key={r.id} className="hover:bg-gray-50">
-              <td className="px-3 py-1.5 whitespace-nowrap tabular-nums">{r.changed_at}</td>
-              <td className="px-3 py-1.5 font-mono">{r.key}</td>
-              <td className="px-3 py-1.5 max-w-48 truncate" title={JSON.stringify(r.old_value)}>
-                {JSON.stringify(r.old_value)?.slice(0, 60)}
-              </td>
-              <td className="px-3 py-1.5 max-w-48 truncate" title={JSON.stringify(r.new_value)}>
-                {JSON.stringify(r.new_value)?.slice(0, 60)}
-              </td>
-              <td className="px-3 py-1.5">{r.changed_by}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="space-y-0">
+      {rows.map((r, i) => (
+        <div key={r.id}>
+          {i > 0 && <Divider />}
+          <div className="py-3">
+            <span className="text-xs text-ink-tertiary font-mono block">
+              {r.changed_at}
+            </span>
+            <span className="text-sm text-ink-primary font-medium">
+              {r.key}
+            </span>
+            <span className="block text-xs text-ink-secondary font-mono">
+              {JSON.stringify(r.old_value)?.slice(0, 60)} {"\u2192"}{" "}
+              {JSON.stringify(r.new_value)?.slice(0, 60)}
+            </span>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
@@ -334,7 +360,9 @@ export default function AdminPage() {
       const res = await fetch(`/api/config?strategy=${strategy}`);
       const data = await res.json();
       setConfig(data.config || []);
-    } catch { setConfig([]); }
+    } catch {
+      setConfig([]);
+    }
   }, []);
 
   const fetchGlobal = useCallback(async () => {
@@ -342,11 +370,17 @@ export default function AdminPage() {
       const res = await fetch(`/api/config?strategy=global`);
       const data = await res.json();
       setGlobalConfig(data.config || []);
-    } catch { setGlobalConfig([]); }
+    } catch {
+      setGlobalConfig([]);
+    }
   }, []);
 
-  useEffect(() => { fetchConfig(tab); }, [tab, fetchConfig]);
-  useEffect(() => { fetchGlobal(); }, [fetchGlobal]);
+  useEffect(() => {
+    fetchConfig(tab);
+  }, [tab, fetchConfig]);
+  useEffect(() => {
+    fetchGlobal();
+  }, [fetchGlobal]);
 
   const saveValue = async (strategy: string, key: string, value: unknown) => {
     try {
@@ -364,72 +398,82 @@ export default function AdminPage() {
       fetchConfig(tab);
       fetchGlobal();
       setAuditKey((k) => k + 1);
-    } catch (err) {
+    } catch {
       setToast({ msg: "Network error", type: "err" });
     }
   };
 
-  const tabs: { key: Strategy; label: string }[] = [
-    { key: "spinoff", label: "Spinoff Model" },
-    { key: "activism", label: "Activism Model" },
-  ];
-
   return (
-    <div>
-      {toast && <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />}
+    <AppLayout>
+      <div className="p-6 max-w-7xl">
+        {toast && (
+          <Toast msg={toast.msg} type={toast.type} onClose={() => setToast(null)} />
+        )}
 
-      {/* Tab bar */}
-      <div className="flex gap-1 mb-6">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-sm font-medium rounded-t transition-colors
-              ${tab === t.key
-                ? "bg-gray-800 text-white"
-                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-              }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+        <PageHeader
+          title="Configuration"
+          subtitle="Scoring model parameters"
+        />
 
-      {/* Global config (always shown) */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Global Settings</h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          {globalConfig.map((row) => (
-            <ConfigCard
-              key={row.key}
-              row={row}
-              onSave={(v) => saveValue("global", row.key, v)}
-            />
-          ))}
+        <div className="grid gap-6" style={{ gridTemplateColumns: "1fr 360px" }}>
+          {/* Left column — Parameter editor */}
+          <div className="space-y-6">
+            {/* Tab bar */}
+            <div className="flex gap-2">
+              <Button
+                variant={tab === "spinoff" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setTab("spinoff")}
+              >
+                Spinoff
+              </Button>
+              <Button
+                variant={tab === "activism" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setTab("activism")}
+              >
+                Activism
+              </Button>
+            </div>
+
+            {/* Global config */}
+            {globalConfig.length > 0 && (
+              <div className="space-y-4">
+                <h2 className="text-sm font-semibold text-ink-primary">
+                  Global Settings
+                </h2>
+                <div className="grid gap-4 grid-cols-2">
+                  {globalConfig.map((row) => (
+                    <ConfigCard
+                      key={row.key}
+                      row={row}
+                      onSave={(v) => saveValue("global", row.key, v)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Divider label={`${tab === "spinoff" ? "Spinoff" : "Activism"} Model`} />
+
+            {/* Strategy-specific config */}
+            <div className="grid gap-4 grid-cols-2">
+              {config.map((row) => (
+                <ConfigCard
+                  key={row.key}
+                  row={row}
+                  onSave={(v) => saveValue(tab, row.key, v)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {/* Right column — Audit log */}
+          <Card title="Recent Changes">
+            <AuditLog key={auditKey} strategy={tab === "spinoff" || tab === "activism" ? tab : null} />
+          </Card>
         </div>
       </div>
-
-      {/* Strategy-specific config */}
-      <div className="mb-8">
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">
-          {tab === "spinoff" ? "Spinoff" : "Activism"} Model Configuration
-        </h2>
-        <div className="grid gap-4 md:grid-cols-2">
-          {config.map((row) => (
-            <ConfigCard
-              key={row.key}
-              row={row}
-              onSave={(v) => saveValue(tab, row.key, v)}
-            />
-          ))}
-        </div>
-      </div>
-
-      {/* Audit log */}
-      <div>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Change Log</h2>
-        <AuditLog key={auditKey} strategy={tab === "spinoff" || tab === "activism" ? tab : null} />
-      </div>
-    </div>
+    </AppLayout>
   );
 }

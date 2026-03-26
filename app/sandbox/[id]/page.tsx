@@ -14,6 +14,16 @@ import {
   Legend,
 } from "chart.js";
 import { Bar, Line } from "react-chartjs-2";
+import AppLayout from "@/app/components/AppLayout";
+import {
+  PageHeader,
+  Card,
+  Button,
+  Stat,
+  AlertBanner,
+  Divider,
+  EmptyState,
+} from "@/components/ui";
 
 ChartJS.register(
   CategoryScale,
@@ -101,7 +111,7 @@ interface Baseline {
   };
 }
 
-// ── Metric display map ──────────────────────────────────────────────────
+// ── Metric display ──────────────────────────────────────────────────────
 
 const METRIC_LABELS: Record<string, string> = {
   n_qualified: "Candidates qualified",
@@ -133,8 +143,6 @@ const POSITIVE_IS_GOOD = new Set([
   "win_rate_270d",
 ]);
 
-// ── Weight slider config ────────────────────────────────────────────────
-
 const WEIGHT_KEYS = ["intent_weight", "ownership_weight", "quality_weight"];
 
 const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; step: number }> = {
@@ -142,19 +150,17 @@ const THRESHOLD_BOUNDS: Record<string, { min: number; max: number; step: number 
   ownership_minimum: { min: 0, max: 100, step: 1 },
 };
 
-// ── Helpers ──────────────────────────────────────────────────────────────
-
 function fmtMetric(key: string, val: number | null | undefined): string {
-  if (val === null || val === undefined) return "--";
+  if (val === null || val === undefined) return "\u2014";
   if (key === "n_qualified") return val.toString();
   if (PCT_METRICS.has(key)) return `${(val * 100).toFixed(1)}%`;
   return val.toFixed(3);
 }
 
 function deltaColor(key: string, delta: number): string {
-  if (Math.abs(delta) < 0.0001) return "text-gray-500";
+  if (Math.abs(delta) < 0.0001) return "text-ink-tertiary";
   const good = POSITIVE_IS_GOOD.has(key) ? delta > 0 : delta < 0;
-  return good ? "text-green-600" : "text-red-600";
+  return good ? "text-signal-high" : "text-signal-low";
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -163,7 +169,6 @@ export default function ExperimentWorkspace() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
 
-  // State
   const [experiment, setExperiment] = useState<Experiment | null>(null);
   const [configs, setConfigs] = useState<ConfigItem[]>([]);
   const [localValues, setLocalValues] = useState<Record<string, unknown>>({});
@@ -288,7 +293,6 @@ export default function ExperimentWorkspace() {
     setExperiment((prev) => (prev ? { ...prev, status: "running" } : prev));
   };
 
-  // Poll running job
   useEffect(() => {
     if (!runningJobId) return;
     const timer = setInterval(() => setElapsed((e) => e + 1), 1000);
@@ -334,22 +338,23 @@ export default function ExperimentWorkspace() {
 
   // ── Chart data ────────────────────────────────────────────────────────
 
-  const currentThreshold = typeof localValues.score_threshold === "number"
-    ? localValues.score_threshold
-    : parseFloat(String(localValues.score_threshold ?? 0.5));
+  const currentThreshold =
+    typeof localValues.score_threshold === "number"
+      ? localValues.score_threshold
+      : parseFloat(String(localValues.score_threshold ?? 0.5));
 
   const histogramData = useMemo(() => {
     if (!dist?.score_histogram) return null;
     return {
-      labels: dist.score_histogram.map(
-        (b) => `${b.bin_start.toFixed(2)}`
-      ),
+      labels: dist.score_histogram.map((b) => `${b.bin_start.toFixed(2)}`),
       datasets: [
         {
           label: "Candidates",
           data: dist.score_histogram.map((b) => b.count),
           backgroundColor: dist.score_histogram.map((b) =>
-            b.bin_start >= currentThreshold ? "rgba(34,197,94,0.6)" : "rgba(156,163,175,0.4)"
+            b.bin_start >= currentThreshold
+              ? "rgba(34,197,94,0.6)"
+              : "rgba(156,163,175,0.4)"
           ),
           borderWidth: 0,
         },
@@ -400,524 +405,682 @@ export default function ExperimentWorkspace() {
   // ── Render ────────────────────────────────────────────────────────────
 
   if (loading) {
-    return <div className="text-sm text-gray-500 mt-8">Loading workspace...</div>;
+    return (
+      <AppLayout>
+        <div className="p-6">
+          <span className="text-sm text-ink-tertiary">Loading workspace...</span>
+        </div>
+      </AppLayout>
+    );
   }
 
   if (!experiment) {
-    return <div className="text-sm text-red-500 mt-8">Experiment not found</div>;
+    return (
+      <AppLayout>
+        <div className="p-6">
+          <AlertBanner variant="critical" message="Experiment not found" />
+        </div>
+      </AppLayout>
+    );
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-88px)]">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <button
-            onClick={() => router.push("/sandbox")}
-            className="text-xs text-gray-400 hover:text-gray-600 mb-1"
-          >
-            &larr; Back to experiments
-          </button>
-          <h2 className="text-lg font-semibold">{experiment.name}</h2>
-          {experiment.description && (
-            <p className="text-sm text-gray-500">{experiment.description}</p>
-          )}
-        </div>
-      </div>
+    <AppLayout>
+      <div className="relative">
+        {runningJobId && (
+          <div className="absolute top-0 left-0 right-0 h-px bg-signal-mid animate-pulse" />
+        )}
 
-      {/* Main grid */}
-      <div className="flex-1 grid gap-4 min-h-0" style={{ gridTemplateColumns: "340px 1fr" }}>
-        {/* Left panel — Parameter editor */}
-        <div className="overflow-y-auto border border-gray-200 rounded bg-white p-4 space-y-6">
-          {/* Compare toggle */}
-          <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showLiveCompare}
-              onChange={(e) => setShowLiveCompare(e.target.checked)}
-              className="rounded"
-            />
-            Compare to live model
-          </label>
-
-          {/* Weights */}
-          {grouped.weight && (
-            <section>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Weights</h3>
-              {grouped.weight.map((c) => {
-                const val = typeof localValues[c.key] === "number"
-                  ? (localValues[c.key] as number)
-                  : parseFloat(String(localValues[c.key] ?? 0));
-                const liveVal =
-                  showLiveCompare && liveConfig.weights
-                    ? (liveConfig.weights as Record<string, number>)[
-                        c.key.replace("_weight", "").replace("quality", "activist_quality")
-                      ]
-                    : undefined;
-
-                return (
-                  <div key={c.key} className="mb-3">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span>{c.label || c.key}</span>
-                      <span className="font-mono">{val.toFixed(2)}</span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="range"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={val}
-                        onChange={(e) => updateValue(c.key, parseFloat(e.target.value))}
-                        className="w-full"
-                      />
-                      {liveVal !== undefined && (
-                        <div
-                          className="absolute top-0 h-5 w-0.5 bg-blue-400 pointer-events-none"
-                          style={{ left: `${liveVal * 100}%` }}
-                          title={`Live: ${liveVal.toFixed(2)}`}
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-              <div
-                className={`text-xs font-mono px-2 py-1 rounded ${
-                  weightsValid ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                }`}
-              >
-                Sum: {weightSum.toFixed(3)} {weightsValid ? "" : "(must be 1.0)"}
+        <div className="p-6">
+          <PageHeader
+            title={experiment.name}
+            subtitle="vs baseline"
+            actions={
+              <div className="flex items-center gap-3">
+                <Button variant="ghost" size="sm" onClick={() => router.push("/sandbox")}>
+                  \u2190 Back
+                </Button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={runBacktest}
+                  disabled={!weightsValid || !!runningJobId}
+                >
+                  {runningJobId ? `Running... ${elapsed}s` : "Run Backtest"}
+                </Button>
               </div>
-            </section>
-          )}
+            }
+          />
 
-          {/* Thresholds */}
-          {grouped.threshold && (
-            <section>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Thresholds</h3>
-              {grouped.threshold.map((c) => {
-                const val = typeof localValues[c.key] === "number"
-                  ? (localValues[c.key] as number)
-                  : parseFloat(String(localValues[c.key] ?? 0));
-                const bounds = THRESHOLD_BOUNDS[c.key] || { min: 0, max: 1, step: 0.01 };
-
-                return (
-                  <div key={c.key} className="mb-3">
-                    <div className="flex justify-between text-xs mb-1">
-                      <span>{c.label || c.key}</span>
-                    </div>
-                    <input
-                      type="number"
-                      min={bounds.min}
-                      max={bounds.max}
-                      step={bounds.step}
-                      value={val}
-                      onChange={(e) => updateValue(c.key, parseFloat(e.target.value))}
-                      className="w-full border border-gray-300 rounded px-2 py-1 text-sm font-mono"
-                    />
-                  </div>
-                );
-              })}
-            </section>
-          )}
-
-          {/* Keywords */}
-          {grouped.keyword && (
-            <section>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Keywords</h3>
-              {grouped.keyword.map((c) => {
-                const tags: Array<Record<string, string>> = Array.isArray(localValues[c.key])
-                  ? (localValues[c.key] as Array<Record<string, string>>)
-                  : [];
-
-                return (
-                  <div key={c.key} className="mb-3">
-                    <div className="text-xs mb-1">{c.label || c.key}</div>
-                    <div className="flex flex-wrap gap-1">
-                      {tags.map((tag, i) => (
-                        <span
-                          key={i}
-                          className="bg-gray-100 text-xs px-2 py-0.5 rounded flex items-center gap-1"
-                        >
-                          {tag.phrase || JSON.stringify(tag)}
-                          <button
-                            onClick={() => {
-                              const next = tags.filter((_, j) => j !== i);
-                              updateValue(c.key, next);
-                            }}
-                            className="text-gray-400 hover:text-gray-600"
-                          >
-                            x
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </section>
-          )}
-
-          {/* Other config categories */}
-          {Object.entries(grouped)
-            .filter(([cat]) => !["weight", "threshold", "keyword"].includes(cat))
-            .map(([cat, items]) => (
-              <section key={cat}>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">{cat}</h3>
-                {items.map((c) => (
-                  <div key={c.key} className="mb-2 text-xs">
-                    <span className="text-gray-500">{c.label || c.key}:</span>{" "}
-                    <span className="font-mono">
-                      {typeof localValues[c.key] === "object"
-                        ? JSON.stringify(localValues[c.key])
-                        : String(localValues[c.key] ?? "")}
-                    </span>
-                  </div>
-                ))}
-              </section>
-            ))}
-        </div>
-
-        {/* Right panel — Results */}
-        <div className="overflow-y-auto border border-gray-200 rounded bg-white p-4 space-y-6">
-          {!result ? (
-            <div className="text-sm text-gray-400 mt-8 text-center">
-              No runs yet. Configure parameters and click Run backtest.
+          {jobError && (
+            <div className="mb-4">
+              <AlertBanner variant="warning" message={`Backtest failed \u2014 ${jobError}`} />
             </div>
-          ) : (
-            <>
-              {/* Run history selector */}
-              {results.length > 1 && (
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="text-gray-500">Run:</span>
-                  <select
-                    value={selectedResultIdx}
-                    onChange={(e) => setSelectedResultIdx(parseInt(e.target.value, 10))}
-                    className="border border-gray-300 rounded px-2 py-1 text-xs bg-white"
-                  >
-                    {results.map((r, i) => (
-                      <option key={r.id} value={i}>
-                        {new Date(r.created_at).toLocaleString()}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
+          )}
 
-              {/* Summary table */}
-              <div>
-                <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Results</h3>
-                {metrics && (
-                  <div className="text-xs text-gray-500 mb-2 flex gap-4">
-                    <span>Train: &lt;{metrics.cutoff_year} (N={metrics.n_train})</span>
-                    <span>Test: &ge;{metrics.cutoff_year} (N={metrics.n_test})</span>
-                  </div>
-                )}
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-left text-xs text-gray-500">
-                      <th className="py-1">Metric</th>
-                      <th className="py-1">Train</th>
-                      <th className="py-1">Test</th>
-                      <th className="py-1">Baseline</th>
-                      <th className="py-1">Delta</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(METRIC_LABELS).map(([key, label]) => {
-                      const trainVal = trainMetrics?.[key];
-                      const testVal = testMetrics?.[key];
-                      const baseVal = bmTest?.[key];
-                      const delta =
-                        testVal !== null && testVal !== undefined && baseVal !== null && baseVal !== undefined
-                          ? (testVal as number) - (baseVal as number)
-                          : null;
+          {!weightsValid && !runningJobId && (
+            <div className="mb-4">
+              <AlertBanner
+                variant="critical"
+                message={`Weights must sum to 1.0 (currently ${weightSum.toFixed(3)})`}
+              />
+            </div>
+          )}
+
+          <div className="grid gap-6" style={{ gridTemplateColumns: "340px 1fr" }}>
+            {/* Left panel — Parameter editor */}
+            <Card title="Parameters">
+              <div className="space-y-6">
+                {/* Compare toggle */}
+                <label className="flex items-center gap-2 text-xs text-ink-tertiary cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={showLiveCompare}
+                    onChange={(e) => setShowLiveCompare(e.target.checked)}
+                    className="rounded"
+                  />
+                  Compare to live model
+                </label>
+
+                {/* Weights */}
+                {grouped.weight && (
+                  <div>
+                    <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                      Weights
+                    </p>
+                    {grouped.weight.map((c) => {
+                      const val =
+                        typeof localValues[c.key] === "number"
+                          ? (localValues[c.key] as number)
+                          : parseFloat(String(localValues[c.key] ?? 0));
+                      const liveVal =
+                        showLiveCompare && liveConfig.weights
+                          ? (liveConfig.weights as Record<string, number>)[
+                              c.key
+                                .replace("_weight", "")
+                                .replace("quality", "activist_quality")
+                            ]
+                          : undefined;
 
                       return (
-                        <tr key={key} className="border-b border-gray-100">
-                          <td className="py-1.5 text-xs text-gray-600">{label}</td>
-                          <td className="py-1.5 font-mono text-xs text-gray-400">
-                            {fmtMetric(key, trainVal as number | null)}
-                          </td>
-                          <td className="py-1.5 font-mono text-xs">
-                            {fmtMetric(key, testVal as number | null)}
-                          </td>
-                          <td className="py-1.5 font-mono text-xs text-gray-400">
-                            {fmtMetric(key, baseVal as number | null)}
-                          </td>
-                          <td className={`py-1.5 font-mono text-xs ${delta !== null ? deltaColor(key, delta) : ""}`}>
-                            {delta !== null
-                              ? `${delta > 0 ? "+" : ""}${fmtMetric(key, delta)}`
-                              : "--"}
-                          </td>
-                        </tr>
+                        <div key={c.key} className="mb-3">
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="text-ink-secondary">
+                              {c.label || c.key}
+                            </span>
+                            <span className="font-mono text-ink-primary">
+                              {val.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="relative">
+                            <input
+                              type="range"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={val}
+                              onChange={(e) =>
+                                updateValue(c.key, parseFloat(e.target.value))
+                              }
+                              className="w-full"
+                            />
+                            {liveVal !== undefined && (
+                              <div
+                                className="absolute top-0 h-5 w-0.5 bg-accent-default pointer-events-none"
+                                style={{ left: `${liveVal * 100}%` }}
+                                title={`Live: ${liveVal.toFixed(2)}`}
+                              />
+                            )}
+                          </div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Score distribution chart */}
-              {histogramData && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                    Score Distribution
-                  </h3>
-                  <div className="h-48">
-                    <Bar
-                      data={histogramData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                          x: { title: { display: true, text: "Score" } },
-                          y: { title: { display: true, text: "Count" } },
-                        },
-                      }}
-                    />
+                    <div
+                      className={`text-xs font-mono px-2 py-1 rounded-md ${
+                        weightsValid
+                          ? "bg-signal-high/10 text-signal-high"
+                          : "bg-signal-low/10 text-signal-low"
+                      }`}
+                    >
+                      Sum: {weightSum.toFixed(3)}{" "}
+                      {weightsValid ? "" : "(must be 1.0)"}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Threshold sensitivity chart */}
-              {sensitivityData && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                    Threshold Sensitivity
-                  </h3>
-                  <div className="h-48">
-                    <Line
-                      data={sensitivityData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                          x: { title: { display: true, text: "Threshold" } },
-                          y: { title: { display: true, text: "Mean excess return (90d) %" } },
-                        },
-                      }}
-                    />
-                  </div>
-                </div>
-              )}
+                {/* Thresholds */}
+                {grouped.threshold && (
+                  <div>
+                    <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                      Thresholds
+                    </p>
+                    {grouped.threshold.map((c) => {
+                      const val =
+                        typeof localValues[c.key] === "number"
+                          ? (localValues[c.key] as number)
+                          : parseFloat(String(localValues[c.key] ?? 0));
+                      const bounds = THRESHOLD_BOUNDS[c.key] || {
+                        min: 0,
+                        max: 1,
+                        step: 0.01,
+                      };
 
-              {/* Intent breakdown */}
-              {dist?.intent_breakdown && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                    Intent Breakdown
-                  </h3>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b text-left text-xs text-gray-500">
-                        <th className="py-1">Tier</th>
-                        <th className="py-1">N candidates</th>
-                        <th className="py-1">Mean excess (90d)</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {["passive", "active", "control"].map((tier) => {
-                        const d = dist.intent_breakdown?.[tier];
-                        return (
-                          <tr key={tier} className="border-b border-gray-100">
-                            <td className="py-1.5 text-xs capitalize">{tier}</td>
-                            <td className="py-1.5 font-mono text-xs">{d?.n ?? 0}</td>
-                            <td className="py-1.5 font-mono text-xs">
-                              {d?.mean_excess_90d !== null && d?.mean_excess_90d !== undefined
-                                ? `${(d.mean_excess_90d * 100).toFixed(1)}%`
-                                : "--"}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-
-              {/* Information Coefficient */}
-              {(dist?.ic_90d || dist?.ic_270d) && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                    Information Coefficient
-                  </h3>
-                  <div className="grid grid-cols-2 gap-3">
-                    {[
-                      { label: "IC (90d)", data: dist.ic_90d },
-                      { label: "IC (270d)", data: dist.ic_270d },
-                    ].map(({ label, data }) => {
-                      if (!data) return null;
-                      const sig = data.pval < 0.05;
-                      const color = sig
-                        ? data.ic > 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                        : "text-gray-500";
                       return (
-                        <div key={label} className="bg-gray-50 rounded p-3">
-                          <div className="text-xs text-gray-500 mb-1">{label}</div>
-                          <div className={`text-lg font-mono font-semibold ${color}`}>
-                            {data.ic.toFixed(4)}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            p={data.pval.toFixed(4)} &middot; n={data.n}
-                            {sig && <span className="ml-1 text-green-600">*</span>}
+                        <div key={c.key} className="mb-3">
+                          <label className="block text-xs text-ink-secondary mb-1">
+                            {c.label || c.key}
+                          </label>
+                          <input
+                            type="number"
+                            min={bounds.min}
+                            max={bounds.max}
+                            step={bounds.step}
+                            value={val}
+                            onChange={(e) =>
+                              updateValue(c.key, parseFloat(e.target.value))
+                            }
+                            className="w-full px-2 py-1 rounded-md text-sm font-mono bg-surface-sunken text-ink-primary"
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Keywords */}
+                {grouped.keyword && (
+                  <div>
+                    <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                      Keywords
+                    </p>
+                    {grouped.keyword.map((c) => {
+                      const tags: Array<Record<string, string>> = Array.isArray(
+                        localValues[c.key]
+                      )
+                        ? (localValues[c.key] as Array<Record<string, string>>)
+                        : [];
+
+                      return (
+                        <div key={c.key} className="mb-3">
+                          <p className="text-xs text-ink-secondary mb-1">
+                            {c.label || c.key}
+                          </p>
+                          <div className="flex flex-wrap gap-1">
+                            {tags.map((tag, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 bg-surface-sunken text-xs px-2 py-0.5 rounded-md text-ink-secondary"
+                              >
+                                {tag.phrase || JSON.stringify(tag)}
+                                <button
+                                  onClick={() => {
+                                    const next = tags.filter(
+                                      (_, j) => j !== i
+                                    );
+                                    updateValue(c.key, next);
+                                  }}
+                                  className="text-ink-tertiary hover:text-ink-primary"
+                                >
+                                  x
+                                </button>
+                              </span>
+                            ))}
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
+                )}
+
+                {/* Other categories */}
+                {Object.entries(grouped)
+                  .filter(
+                    ([cat]) => !["weight", "threshold", "keyword"].includes(cat)
+                  )
+                  .map(([cat, items]) => (
+                    <div key={cat}>
+                      <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                        {cat}
+                      </p>
+                      {items.map((c) => (
+                        <div key={c.key} className="mb-2 text-xs">
+                          <span className="text-ink-tertiary">
+                            {c.label || c.key}:
+                          </span>{" "}
+                          <span className="font-mono text-ink-secondary">
+                            {typeof localValues[c.key] === "object"
+                              ? JSON.stringify(localValues[c.key])
+                              : String(localValues[c.key] ?? "")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+              </div>
+            </Card>
+
+            {/* Right panel — Results */}
+            <Card title="Results">
+              {runningJobId && (
+                <p className="text-sm text-ink-tertiary mb-4">
+                  Running backtest...
+                </p>
               )}
 
-              {/* Quintile returns chart */}
-              {quintileData && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                    Quintile Returns (90d)
-                  </h3>
-                  <div className="h-48">
-                    <Bar
-                      data={quintileData}
-                      options={{
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                          x: { title: { display: true, text: "Score Quintile" } },
-                          y: { title: { display: true, text: "Mean excess return %" } },
-                        },
-                      }}
-                    />
-                  </div>
-                  {dist?.quintiles_90d && (
-                    <table className="w-full text-xs mt-2">
-                      <thead>
-                        <tr className="border-b text-left text-gray-500">
-                          <th className="py-1">Quintile</th>
-                          <th className="py-1">Score range</th>
-                          <th className="py-1">N</th>
-                          <th className="py-1">Mean excess (90d)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {dist.quintiles_90d.map((q) => (
-                          <tr key={q.quintile} className="border-b border-gray-100">
-                            <td className="py-1">Q{q.quintile}</td>
-                            <td className="py-1 font-mono">{q.score_lo.toFixed(3)}-{q.score_hi.toFixed(3)}</td>
-                            <td className="py-1 font-mono">{q.n}</td>
-                            <td className={`py-1 font-mono ${q.mean_excess_return !== null && q.mean_excess_return > 0 ? "text-green-600" : "text-red-600"}`}>
-                              {q.mean_excess_return !== null ? `${(q.mean_excess_return * 100).toFixed(1)}%` : "--"}
-                            </td>
-                          </tr>
+              {!result ? (
+                <EmptyState
+                  title="No runs yet"
+                  subtitle="Configure parameters and click Run Backtest."
+                />
+              ) : (
+                <div className="space-y-6">
+                  {/* Run selector */}
+                  {results.length > 1 && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-ink-tertiary">Run:</span>
+                      <select
+                        value={selectedResultIdx}
+                        onChange={(e) =>
+                          setSelectedResultIdx(parseInt(e.target.value, 10))
+                        }
+                        className="px-2 py-1 rounded-md text-xs bg-surface-sunken text-ink-primary"
+                      >
+                        {results.map((r, i) => (
+                          <option key={r.id} value={i}>
+                            {new Date(r.created_at).toLocaleString()}
+                          </option>
                         ))}
-                      </tbody>
-                    </table>
+                      </select>
+                    </div>
                   )}
-                </div>
-              )}
 
-              {/* Factor correlation matrix */}
-              {dist?.factor_correlations && Object.keys(dist.factor_correlations).length > 0 && (
-                <div>
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                    Factor Correlations
-                  </h3>
-                  {(() => {
-                    const factors = ["intent_score", "ownership_normalized", "quality_normalized"];
-                    const labels: Record<string, string> = {
-                      intent_score: "Intent",
-                      ownership_normalized: "Ownership",
-                      quality_normalized: "Quality",
-                    };
-                    const corr = dist.factor_correlations!;
-                    return (
-                      <table className="w-full text-xs">
+                  {/* Summary stats */}
+                  {testMetrics && (
+                    <div className="flex gap-6">
+                      <Stat
+                        label="Sharpe (270d)"
+                        value={fmtMetric(
+                          "sharpe_270d",
+                          testMetrics.sharpe_270d as number | null
+                        )}
+                      />
+                      <Stat
+                        label="Win Rate (270d)"
+                        value={fmtMetric(
+                          "win_rate_270d",
+                          testMetrics.win_rate_270d as number | null
+                        )}
+                      />
+                      <Stat
+                        label="Mean Excess (270d)"
+                        value={fmtMetric(
+                          "mean_excess_270d",
+                          testMetrics.mean_excess_270d as number | null
+                        )}
+                      />
+                      {bmTest?.sharpe_270d != null &&
+                        testMetrics.sharpe_270d != null && (
+                          <Stat
+                            label="vs Baseline"
+                            value={`${((testMetrics.sharpe_270d as number) - (bmTest.sharpe_270d as number)) > 0 ? "+" : ""}${((testMetrics.sharpe_270d as number) - (bmTest.sharpe_270d as number)).toFixed(3)}`}
+                            delta={(testMetrics.sharpe_270d as number) - (bmTest.sharpe_270d as number)}
+                            deltaFormat="decimal"
+                          />
+                        )}
+                    </div>
+                  )}
+
+                  <Divider />
+
+                  {/* Full metrics table */}
+                  {metrics && (
+                    <div>
+                      <p className="text-xs text-ink-tertiary mb-2">
+                        Train: &lt;{metrics.cutoff_year} (N={metrics.n_train}){" "}
+                        &middot; Test: &ge;{metrics.cutoff_year} (N=
+                        {metrics.n_test})
+                      </p>
+                      <table className="w-full text-sm">
                         <thead>
-                          <tr className="border-b text-left text-gray-500">
-                            <th className="py-1"></th>
-                            {factors.map((f) => (
-                              <th key={f} className="py-1">{labels[f]}</th>
-                            ))}
+                          <tr className="text-left text-xs text-ink-tertiary">
+                            <th className="py-1">Metric</th>
+                            <th className="py-1">Train</th>
+                            <th className="py-1">Test</th>
+                            <th className="py-1">Baseline</th>
+                            <th className="py-1">Delta</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {factors.map((f1) => (
-                            <tr key={f1} className="border-b border-gray-100">
-                              <td className="py-1 text-gray-600 font-medium">{labels[f1]}</td>
-                              {factors.map((f2) => {
-                                const val = corr[`${f1}_x_${f2}`];
-                                const abs = Math.abs(val ?? 0);
-                                const bg =
-                                  abs > 0.7
-                                    ? "bg-blue-100"
-                                    : abs > 0.4
-                                      ? "bg-blue-50"
-                                      : "";
-                                return (
-                                  <td key={f2} className={`py-1 font-mono text-center ${bg}`}>
-                                    {val !== undefined ? val.toFixed(3) : "--"}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
+                          {Object.entries(METRIC_LABELS).map(([key, label]) => {
+                            const trainVal = trainMetrics?.[key];
+                            const testVal = testMetrics?.[key];
+                            const baseVal = bmTest?.[key];
+                            const delta =
+                              testVal != null && baseVal != null
+                                ? (testVal as number) - (baseVal as number)
+                                : null;
+
+                            return (
+                              <tr
+                                key={key}
+                                className="border-b border-surface-sunken"
+                              >
+                                <td className="py-1.5 text-xs text-ink-secondary">
+                                  {label}
+                                </td>
+                                <td className="py-1.5 font-mono text-xs text-ink-tertiary">
+                                  {fmtMetric(key, trainVal as number | null)}
+                                </td>
+                                <td className="py-1.5 font-mono text-xs text-ink-primary">
+                                  {fmtMetric(key, testVal as number | null)}
+                                </td>
+                                <td className="py-1.5 font-mono text-xs text-ink-tertiary">
+                                  {fmtMetric(key, baseVal as number | null)}
+                                </td>
+                                <td
+                                  className={`py-1.5 font-mono text-xs ${
+                                    delta !== null ? deltaColor(key, delta) : ""
+                                  }`}
+                                >
+                                  {delta !== null
+                                    ? `${delta > 0 ? "+" : ""}${fmtMetric(key, delta)}`
+                                    : "\u2014"}
+                                </td>
+                              </tr>
+                            );
+                          })}
                         </tbody>
                       </table>
-                    );
-                  })()}
+                    </div>
+                  )}
+
+                  {/* Score distribution chart */}
+                  {histogramData && (
+                    <div>
+                      <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                        Score Distribution
+                      </p>
+                      <div className="h-48">
+                        <Bar
+                          data={histogramData}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                              x: { title: { display: true, text: "Score" } },
+                              y: { title: { display: true, text: "Count" } },
+                            },
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Threshold sensitivity chart */}
+                  {sensitivityData && (
+                    <div>
+                      <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                        Threshold Sensitivity
+                      </p>
+                      <div className="h-48">
+                        <Line
+                          data={sensitivityData}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                              x: {
+                                title: { display: true, text: "Threshold" },
+                              },
+                              y: {
+                                title: {
+                                  display: true,
+                                  text: "Mean excess return (90d) %",
+                                },
+                              },
+                            },
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Intent breakdown */}
+                  {dist?.intent_breakdown && (
+                    <div>
+                      <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                        Intent Breakdown
+                      </p>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-ink-tertiary">
+                            <th className="py-1">Tier</th>
+                            <th className="py-1">N candidates</th>
+                            <th className="py-1">Mean excess (90d)</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {["passive", "active", "control"].map((tier) => {
+                            const d = dist.intent_breakdown?.[tier];
+                            return (
+                              <tr
+                                key={tier}
+                                className="border-b border-surface-sunken"
+                              >
+                                <td className="py-1.5 text-xs capitalize text-ink-primary">
+                                  {tier}
+                                </td>
+                                <td className="py-1.5 font-mono text-xs text-ink-primary">
+                                  {d?.n ?? 0}
+                                </td>
+                                <td className="py-1.5 font-mono text-xs">
+                                  {d?.mean_excess_90d != null
+                                    ? `${(d.mean_excess_90d * 100).toFixed(1)}%`
+                                    : "\u2014"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Information Coefficient */}
+                  {(dist?.ic_90d || dist?.ic_270d) && (
+                    <div>
+                      <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                        Information Coefficient
+                      </p>
+                      <div className="grid grid-cols-2 gap-3">
+                        {[
+                          { label: "IC (90d)", data: dist.ic_90d },
+                          { label: "IC (270d)", data: dist.ic_270d },
+                        ].map(({ label, data }) => {
+                          if (!data) return null;
+                          const sig = data.pval < 0.05;
+                          const color = sig
+                            ? data.ic > 0
+                              ? "text-signal-high"
+                              : "text-signal-low"
+                            : "text-ink-tertiary";
+                          return (
+                            <Card key={label}>
+                              <p className="text-xs text-ink-tertiary mb-1">
+                                {label}
+                              </p>
+                              <p
+                                className={`text-lg font-mono font-semibold ${color}`}
+                              >
+                                {data.ic.toFixed(4)}
+                              </p>
+                              <p className="text-xs text-ink-tertiary">
+                                p={data.pval.toFixed(4)} &middot; n={data.n}
+                                {sig && (
+                                  <span className="ml-1 text-signal-high">
+                                    *
+                                  </span>
+                                )}
+                              </p>
+                            </Card>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Quintile returns chart */}
+                  {quintileData && (
+                    <div>
+                      <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                        Quintile Returns (90d)
+                      </p>
+                      <div className="h-48">
+                        <Bar
+                          data={quintileData}
+                          options={{
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: { legend: { display: false } },
+                            scales: {
+                              x: {
+                                title: {
+                                  display: true,
+                                  text: "Score Quintile",
+                                },
+                              },
+                              y: {
+                                title: {
+                                  display: true,
+                                  text: "Mean excess return %",
+                                },
+                              },
+                            },
+                          }}
+                        />
+                      </div>
+                      {dist?.quintiles_90d && (
+                        <table className="w-full text-xs mt-2">
+                          <thead>
+                            <tr className="text-left text-ink-tertiary">
+                              <th className="py-1">Quintile</th>
+                              <th className="py-1">Score range</th>
+                              <th className="py-1">N</th>
+                              <th className="py-1">Mean excess (90d)</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {dist.quintiles_90d.map((q) => (
+                              <tr
+                                key={q.quintile}
+                                className="border-b border-surface-sunken"
+                              >
+                                <td className="py-1 text-ink-primary">
+                                  Q{q.quintile}
+                                </td>
+                                <td className="py-1 font-mono text-ink-secondary">
+                                  {q.score_lo.toFixed(3)}-
+                                  {q.score_hi.toFixed(3)}
+                                </td>
+                                <td className="py-1 font-mono text-ink-primary">
+                                  {q.n}
+                                </td>
+                                <td
+                                  className={`py-1 font-mono ${
+                                    q.mean_excess_return !== null &&
+                                    q.mean_excess_return > 0
+                                      ? "text-signal-high"
+                                      : "text-signal-low"
+                                  }`}
+                                >
+                                  {q.mean_excess_return !== null
+                                    ? `${(q.mean_excess_return * 100).toFixed(1)}%`
+                                    : "\u2014"}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Factor correlation matrix */}
+                  {dist?.factor_correlations &&
+                    Object.keys(dist.factor_correlations).length > 0 && (
+                      <div>
+                        <p className="text-xs font-semibold text-ink-tertiary uppercase tracking-wider mb-2">
+                          Factor Correlations
+                        </p>
+                        {(() => {
+                          const factors = [
+                            "intent_score",
+                            "ownership_normalized",
+                            "quality_normalized",
+                          ];
+                          const labels: Record<string, string> = {
+                            intent_score: "Intent",
+                            ownership_normalized: "Ownership",
+                            quality_normalized: "Quality",
+                          };
+                          const corr = dist.factor_correlations!;
+                          return (
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="text-left text-ink-tertiary">
+                                  <th className="py-1"></th>
+                                  {factors.map((f) => (
+                                    <th key={f} className="py-1">
+                                      {labels[f]}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {factors.map((f1) => (
+                                  <tr
+                                    key={f1}
+                                    className="border-b border-surface-sunken"
+                                  >
+                                    <td className="py-1 text-ink-secondary font-medium">
+                                      {labels[f1]}
+                                    </td>
+                                    {factors.map((f2) => {
+                                      const val = corr[`${f1}_x_${f2}`];
+                                      const abs = Math.abs(val ?? 0);
+                                      const bg =
+                                        abs > 0.7
+                                          ? "bg-accent-default/20"
+                                          : abs > 0.4
+                                            ? "bg-accent-default/10"
+                                            : "";
+                                      return (
+                                        <td
+                                          key={f2}
+                                          className={`py-1 font-mono text-center text-ink-primary ${bg}`}
+                                        >
+                                          {val !== undefined
+                                            ? val.toFixed(3)
+                                            : "\u2014"}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          );
+                        })()}
+                      </div>
+                    )}
                 </div>
               )}
-            </>
-          )}
+            </Card>
+          </div>
         </div>
       </div>
-
-      {/* Bottom bar — Run controls */}
-      <div className="mt-4 border border-gray-200 rounded bg-white px-4 py-3 flex items-center gap-4">
-        <button
-          onClick={runBacktest}
-          disabled={!weightsValid || !!runningJobId}
-          className="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
-        >
-          {runningJobId ? "Running..." : "Run backtest"}
-        </button>
-
-        {runningJobId && (
-          <div className="flex items-center gap-2 text-sm text-gray-500">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-                fill="none"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
-              />
-            </svg>
-            <span className="font-mono">{elapsed}s</span>
-          </div>
-        )}
-
-        {jobError && (
-          <div className="text-sm text-red-600 bg-red-50 px-3 py-1 rounded">{jobError}</div>
-        )}
-
-        {!weightsValid && !runningJobId && (
-          <span className="text-xs text-red-500">
-            Weights must sum to 1.0 (currently {weightSum.toFixed(3)})
-          </span>
-        )}
-      </div>
-    </div>
+    </AppLayout>
   );
 }

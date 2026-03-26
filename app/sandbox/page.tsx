@@ -2,6 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import AppLayout from "@/app/components/AppLayout";
+import {
+  PageHeader,
+  Card,
+  Button,
+  Stat,
+  StatusBadge,
+  Divider,
+  EmptyState,
+} from "@/components/ui";
 
 interface Experiment {
   id: number;
@@ -29,46 +39,6 @@ interface Baseline {
   };
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-gray-200 text-gray-700",
-  running: "bg-blue-100 text-blue-700",
-  complete: "bg-green-100 text-green-700",
-  error: "bg-red-100 text-red-700",
-};
-
-function DeltaCell({
-  value,
-  baseline,
-  format,
-}: {
-  value: string | null;
-  baseline: number | null;
-  format?: "pct" | "ratio";
-}) {
-  if (value === null || value === undefined) return <span className="text-gray-400">--</span>;
-  const num = parseFloat(value);
-  if (isNaN(num)) return <span className="text-gray-400">--</span>;
-
-  const formatted = format === "pct" ? `${(num * 100).toFixed(1)}%` : num.toFixed(3);
-
-  if (baseline === null || baseline === undefined) return <span>{formatted}</span>;
-
-  const delta = num - baseline;
-  const deltaFormatted =
-    format === "pct" ? `${(delta * 100).toFixed(1)}%` : delta.toFixed(3);
-  const color = delta > 0 ? "text-green-600" : delta < 0 ? "text-red-600" : "text-gray-500";
-
-  return (
-    <span>
-      {formatted}{" "}
-      <span className={`text-xs ${color}`}>
-        ({delta > 0 ? "+" : ""}
-        {deltaFormatted})
-      </span>
-    </span>
-  );
-}
-
 export default function SandboxPage() {
   const router = useRouter();
   const [studentName, setStudentName] = useState<string | null>(null);
@@ -77,6 +47,7 @@ export default function SandboxPage() {
   const [team, setTeam] = useState<Experiment[]>([]);
   const [baseline, setBaseline] = useState<Baseline | null>(null);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<"mine" | "team">("mine");
 
   useEffect(() => {
     const stored = localStorage.getItem("sof_student_name");
@@ -89,7 +60,9 @@ export default function SandboxPage() {
     setLoading(true);
     try {
       const [expRes, baseRes] = await Promise.all([
-        fetch(`/api/sandbox/experiments?student=${encodeURIComponent(studentName)}`),
+        fetch(
+          `/api/sandbox/experiments?student=${encodeURIComponent(studentName)}`
+        ),
         fetch("/api/sandbox/baseline"),
       ]);
       if (expRes.ok) {
@@ -118,218 +91,270 @@ export default function SandboxPage() {
     setStudentName(trimmed);
   };
 
-  const handleFork = async (experimentId: number) => {
+  const handleFork = (experimentId: number) => {
     router.push(`/sandbox/new?fork_from=${experimentId}`);
   };
 
+  const bm = baseline?.metrics?.test;
+
+  // ── Name entry gate ─────────────────────────────────────────────
   if (!studentName) {
     return (
-      <div className="max-w-md mx-auto mt-20">
-        <h2 className="text-lg font-semibold mb-4">Enter your name to get started</h2>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSetName()}
-            placeholder="Your name"
-            className="flex-1 border border-gray-300 rounded px-3 py-2 text-sm"
-          />
-          <button
-            onClick={handleSetName}
-            className="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-700 transition-colors"
-          >
-            Continue
-          </button>
+      <AppLayout>
+        <div className="p-6 max-w-md mx-auto mt-16">
+          <Card title="Enter your name to get started">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSetName()}
+                placeholder="Your name"
+                className="flex-1 px-3 py-2 rounded-md text-sm bg-surface-sunken text-ink-primary"
+              />
+              <Button variant="primary" size="md" onClick={handleSetName}>
+                Continue
+              </Button>
+            </div>
+          </Card>
         </div>
-      </div>
+      </AppLayout>
     );
   }
 
-  if (loading) {
-    return <div className="text-sm text-gray-500 mt-8">Loading experiments...</div>;
+  // ── Experiment card ─────────────────────────────────────────────
+  function ExperimentCard({
+    exp,
+    showFork,
+  }: {
+    exp: Experiment;
+    showFork?: boolean;
+  }) {
+    const hasSharpe = exp.sharpe_270d !== null;
+    const hasWinRate = exp.win_rate_270d !== null;
+    const hasExcess = exp.mean_excess_270d !== null;
+    const hasMetrics = hasSharpe || hasWinRate || hasExcess;
+
+    return (
+      <Card>
+        <div className="flex items-start justify-between mb-2">
+          <div>
+            <p className="text-base font-semibold text-ink-primary">
+              {exp.name}
+            </p>
+            {exp.description && (
+              <p className="text-sm text-ink-secondary">{exp.description}</p>
+            )}
+          </div>
+          <StatusBadge
+            variant={exp.status === "archived" ? "pending" : "confirmed"}
+          />
+        </div>
+
+        <p className="text-xs text-ink-tertiary mb-3">
+          {exp.strategy}
+          {exp.last_run_at &&
+            ` \u00b7 Last run ${new Date(exp.last_run_at).toLocaleDateString()}`}
+          {showFork && ` \u00b7 by ${exp.created_by}`}
+        </p>
+
+        {hasMetrics && (
+          <>
+            <div className="flex gap-6 mb-3">
+              <Stat
+                label="Sharpe"
+                value={
+                  hasSharpe ? parseFloat(exp.sharpe_270d!).toFixed(3) : "\u2014"
+                }
+                delta={
+                  hasSharpe && bm?.sharpe_270d != null
+                    ? parseFloat(exp.sharpe_270d!) - bm.sharpe_270d
+                    : undefined
+                }
+                deltaFormat="decimal"
+              />
+              <Stat
+                label="Win Rate"
+                value={
+                  hasWinRate
+                    ? `${(parseFloat(exp.win_rate_270d!) * 100).toFixed(1)}%`
+                    : "\u2014"
+                }
+                delta={
+                  hasWinRate && bm?.win_rate_270d != null
+                    ? parseFloat(exp.win_rate_270d!) - bm.win_rate_270d
+                    : undefined
+                }
+                deltaFormat="percent"
+              />
+              <Stat
+                label="Mean Excess"
+                value={
+                  hasExcess
+                    ? `${(parseFloat(exp.mean_excess_270d!) * 100).toFixed(1)}%`
+                    : "\u2014"
+                }
+                delta={
+                  hasExcess && bm?.mean_excess_270d != null
+                    ? parseFloat(exp.mean_excess_270d!) - bm.mean_excess_270d
+                    : undefined
+                }
+                deltaFormat="percent"
+              />
+            </div>
+            <Divider />
+          </>
+        )}
+
+        <div className="flex gap-2 mt-3">
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => router.push(`/sandbox/${exp.id}`)}
+          >
+            Open
+          </Button>
+          {showFork && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleFork(exp.id)}
+            >
+              Fork
+            </Button>
+          )}
+        </div>
+      </Card>
+    );
   }
 
-  const bm = baseline?.metrics?.test;
-
+  // ── Main render ─────────────────────────────────────────────────
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Sandbox</h2>
-          <p className="text-sm text-gray-500">
-            Signed in as <span className="font-medium">{studentName}</span>
-            <button
-              onClick={() => {
-                localStorage.removeItem("sof_student_name");
-                setStudentName(null);
-              }}
-              className="ml-2 text-xs text-gray-400 hover:text-gray-600 underline"
-            >
-              change
-            </button>
-          </p>
-        </div>
-        <button
-          onClick={() => router.push("/sandbox/new")}
-          className="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-700 transition-colors"
-        >
-          New experiment
-        </button>
-      </div>
-
-      {/* Baseline reference */}
-      {bm && (
-        <div className="bg-white border border-gray-200 rounded p-4">
-          <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">
-            Live Baseline
-          </h3>
-          <div className="flex gap-6 text-sm">
-            <div>
-              <span className="text-gray-500">Sharpe (270d):</span>{" "}
-              <span className="font-mono">{bm.sharpe_270d?.toFixed(3) ?? "--"}</span>
-            </div>
-            <div>
-              <span className="text-gray-500">Win rate (270d):</span>{" "}
-              <span className="font-mono">
-                {bm.win_rate_270d !== null ? `${(bm.win_rate_270d * 100).toFixed(1)}%` : "--"}
-              </span>
-            </div>
-            <div>
-              <span className="text-gray-500">Mean excess (270d):</span>{" "}
-              <span className="font-mono">
-                {bm.mean_excess_270d !== null
-                  ? `${(bm.mean_excess_270d * 100).toFixed(1)}%`
-                  : "--"}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* My experiments */}
-      <section>
-        <h3 className="text-sm font-semibold mb-3">My Experiments</h3>
-        {mine.length === 0 ? (
-          <p className="text-sm text-gray-400">No experiments yet. Create one to get started.</p>
-        ) : (
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {mine.map((exp) => (
-              <div
-                key={exp.id}
-                onClick={() => router.push(`/sandbox/${exp.id}`)}
-                className="bg-white border border-gray-200 rounded p-4 hover:border-gray-400 cursor-pointer transition-colors"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-sm truncate">{exp.name}</h4>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded ${STATUS_COLORS[exp.status] || "bg-gray-100"}`}
-                  >
-                    {exp.status}
-                  </span>
-                </div>
-                <div className="text-xs text-gray-500 mb-2">
-                  {exp.strategy} &middot;{" "}
-                  {exp.last_run_at
-                    ? `Last run ${new Date(exp.last_run_at).toLocaleDateString()}`
-                    : "No runs"}
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div>
-                    <div className="text-gray-400">Sharpe</div>
-                    <div className="font-mono">
-                      <DeltaCell
-                        value={exp.sharpe_270d}
-                        baseline={bm?.sharpe_270d ?? null}
-                        format="ratio"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-400">Win rate</div>
-                    <div className="font-mono">
-                      <DeltaCell
-                        value={exp.win_rate_270d}
-                        baseline={bm?.win_rate_270d ?? null}
-                        format="pct"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-400">Excess</div>
-                    <div className="font-mono">
-                      <DeltaCell
-                        value={exp.mean_excess_270d}
-                        baseline={bm?.mean_excess_270d ?? null}
-                        format="pct"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
+    <AppLayout>
+      <div className="relative">
+        {loading && (
+          <div className="absolute top-0 left-0 right-0 h-px bg-signal-mid animate-pulse" />
         )}
-      </section>
 
-      {/* Team experiments */}
-      {team.length > 0 && (
-        <section>
-          <h3 className="text-sm font-semibold mb-3">Team Experiments</h3>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {team.map((exp) => (
-              <div
-                key={exp.id}
-                className="bg-white border border-gray-200 rounded p-4"
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-medium text-sm truncate">{exp.name}</h4>
-                  <span className="text-xs text-gray-500">{exp.created_by}</span>
-                </div>
-                <div className="text-xs text-gray-500 mb-2">{exp.strategy}</div>
-                <div className="grid grid-cols-3 gap-2 text-xs mb-3">
-                  <div>
-                    <div className="text-gray-400">Sharpe</div>
-                    <div className="font-mono">
-                      <DeltaCell
-                        value={exp.sharpe_270d}
-                        baseline={bm?.sharpe_270d ?? null}
-                        format="ratio"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-400">Win rate</div>
-                    <div className="font-mono">
-                      <DeltaCell
-                        value={exp.win_rate_270d}
-                        baseline={bm?.win_rate_270d ?? null}
-                        format="pct"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-gray-400">Excess</div>
-                    <div className="font-mono">
-                      <DeltaCell
-                        value={exp.mean_excess_270d}
-                        baseline={bm?.mean_excess_270d ?? null}
-                        format="pct"
-                      />
-                    </div>
-                  </div>
-                </div>
+        <div className="p-6 max-w-6xl">
+          <PageHeader
+            title="Sandbox"
+            subtitle={`Experiment with scoring model parameters \u00b7 signed in as ${studentName}`}
+            actions={
+              <div className="flex gap-2 items-center">
                 <button
-                  onClick={() => handleFork(exp.id)}
-                  className="text-xs bg-gray-100 hover:bg-gray-200 px-3 py-1 rounded transition-colors"
+                  onClick={() => {
+                    localStorage.removeItem("sof_student_name");
+                    setStudentName(null);
+                  }}
+                  className="text-xs text-ink-tertiary underline"
                 >
-                  Fork
+                  change
                 </button>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => router.push("/sandbox/new")}
+                >
+                  New Experiment
+                </Button>
               </div>
-            ))}
+            }
+          />
+
+          {/* Baseline reference */}
+          {bm && (
+            <div className="mb-6">
+              <Card title="Live Baseline">
+                <div className="flex gap-8">
+                  <Stat
+                    label="Sharpe (270d)"
+                    value={bm.sharpe_270d?.toFixed(3) ?? "\u2014"}
+                  />
+                  <Stat
+                    label="Win Rate (270d)"
+                    value={
+                      bm.win_rate_270d !== null
+                        ? `${(bm.win_rate_270d * 100).toFixed(1)}%`
+                        : "\u2014"
+                    }
+                  />
+                  <Stat
+                    label="Mean Excess (270d)"
+                    value={
+                      bm.mean_excess_270d !== null
+                        ? `${(bm.mean_excess_270d * 100).toFixed(1)}%`
+                        : "\u2014"
+                    }
+                  />
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {/* Tabs */}
+          <div className="flex gap-2 mb-6">
+            <Button
+              variant={activeTab === "mine" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setActiveTab("mine")}
+            >
+              My Experiments
+            </Button>
+            <Button
+              variant={activeTab === "team" ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setActiveTab("team")}
+            >
+              Team Experiments
+            </Button>
           </div>
-        </section>
-      )}
-    </div>
+
+          {/* Experiment list */}
+          {activeTab === "mine" && (
+            <>
+              {mine.length === 0 ? (
+                <EmptyState
+                  title="No experiments yet"
+                  subtitle="Create your first experiment to test scoring parameter changes"
+                  action={
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => router.push("/sandbox/new")}
+                    >
+                      New Experiment
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+                  {mine.map((exp) => (
+                    <ExperimentCard key={exp.id} exp={exp} />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === "team" && (
+            <>
+              {team.length === 0 ? (
+                <EmptyState
+                  title="No team experiments"
+                  subtitle="Other students' completed experiments will appear here."
+                />
+              ) : (
+                <div className="grid gap-4 grid-cols-2 lg:grid-cols-3">
+                  {team.map((exp) => (
+                    <ExperimentCard key={exp.id} exp={exp} showFork />
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </AppLayout>
   );
 }

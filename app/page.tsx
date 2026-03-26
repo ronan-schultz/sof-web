@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import AppLayout from "@/app/components/AppLayout";
 import {
-  AppShell,
   PageHeader,
   Stat,
   AlertBanner,
@@ -13,15 +13,7 @@ import {
   StatusBadge,
 } from "@/components/ui";
 import { type Column } from "@/components/ui/DataTable";
-import {
-  LayoutGrid,
-  List,
-  Briefcase,
-  BarChart3,
-  FlaskConical,
-  Settings,
-  RefreshCw,
-} from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -97,17 +89,6 @@ function mapCandidate(c: ApiCandidate): Candidate {
     filing_url: c.filing_url,
   };
 }
-
-// ── Navigation ───────────────────────────────────────────────────────
-
-const navigation = [
-  { label: "Dashboard", href: "/", icon: <LayoutGrid size={20} /> },
-  { label: "Candidates", href: "/candidates", icon: <List size={20} /> },
-  { label: "Portfolio", href: "/portfolio", icon: <Briefcase size={20} /> },
-  { label: "Analytics", href: "/analytics", icon: <BarChart3 size={20} /> },
-  { label: "Sandbox", href: "/sandbox", icon: <FlaskConical size={20} /> },
-  { label: "Admin", href: "/admin", icon: <Settings size={20} /> },
-];
 
 // ── Page ─────────────────────────────────────────────────────────────
 
@@ -290,7 +271,7 @@ export default function CandidatesDashboard() {
   // ── Render ───────────────────────────────────────────────────────
 
   return (
-    <AppShell navigation={navigation}>
+    <AppLayout>
       <div className="relative">
         {loading && (
           <div className="absolute top-0 left-0 right-0 h-px bg-signal-mid animate-pulse" />
@@ -312,7 +293,6 @@ export default function CandidatesDashboard() {
             }
           />
 
-          {/* Stats row */}
           <div className="grid grid-cols-4 gap-8 mb-6">
             <Stat label="Total Candidates" value={String(candidates.length)} />
             <Stat label="High Conviction" value={String(highConviction)} />
@@ -320,7 +300,6 @@ export default function CandidatesDashboard() {
             <Stat label="Last Updated" value={lastUpdated} />
           </div>
 
-          {/* SLA Alert */}
           {pendingCount > 0 && !alertDismissed && (
             <div className="mb-6">
               <AlertBanner
@@ -331,14 +310,12 @@ export default function CandidatesDashboard() {
             </div>
           )}
 
-          {/* Error state */}
           {error && (
             <div className="mb-6">
               <AlertBanner variant="critical" message={`Error: ${error}`} />
             </div>
           )}
 
-          {/* Table or Empty */}
           {!loading && candidates.length === 0 ? (
             <EmptyState
               title="No candidates"
@@ -355,6 +332,6 @@ export default function CandidatesDashboard() {
           )}
         </div>
       </div>
-    </AppShell>
+    </AppLayout>
   );
 }

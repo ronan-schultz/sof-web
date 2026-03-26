@@ -2,6 +2,13 @@
 
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AppLayout from "@/app/components/AppLayout";
+import {
+  PageHeader,
+  Card,
+  Button,
+  AlertBanner,
+} from "@/components/ui";
 
 function NewExperimentForm() {
   const router = useRouter();
@@ -68,80 +75,112 @@ function NewExperimentForm() {
   };
 
   return (
-    <div className="max-w-lg mx-auto mt-8">
-      <h2 className="text-lg font-semibold mb-4">New Experiment</h2>
+    <AppLayout>
+      <div className="p-6 max-w-lg mx-auto">
+        <PageHeader title="New Experiment" />
 
-      {forkName && (
-        <div className="bg-blue-50 border border-blue-200 rounded px-3 py-2 text-sm text-blue-700 mb-4">
-          Forking from: <span className="font-medium">{forkName}</span>. Config will be copied as a starting point.
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} className="space-y-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Name *</label>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-            placeholder="e.g. High intent weight test"
-          />
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Strategy</label>
-          <select
-            value={strategy}
-            onChange={(e) => setStrategy(e.target.value)}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm bg-white"
-          >
-            <option value="activism">Activism (SC 13D)</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Description</label>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={3}
-            className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
-            placeholder="What are you testing?"
-          />
-        </div>
-
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded px-3 py-2 text-sm text-red-700">
-            {error}
+        {forkName && (
+          <div className="mb-4">
+            <AlertBanner
+              variant="warning"
+              message={`Forking from: ${forkName}. Config will be copied as a starting point.`}
+            />
           </div>
         )}
 
-        <div className="flex gap-2">
-          <button
-            type="submit"
-            disabled={submitting || !name.trim()}
-            className="bg-gray-900 text-white px-4 py-2 rounded text-sm hover:bg-gray-700 transition-colors disabled:opacity-40"
-          >
-            {submitting ? "Creating..." : "Create experiment"}
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/sandbox")}
-            className="bg-gray-100 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-200 transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </form>
-    </div>
+        <Card>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-ink-secondary mb-1">
+                Name *
+              </label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                className="w-full px-3 py-2 rounded-md text-sm bg-surface-sunken text-ink-primary"
+                placeholder="e.g. High intent weight test"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-ink-secondary mb-1">
+                Description
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 rounded-md text-sm bg-surface-sunken text-ink-primary resize-none"
+                placeholder="What are you testing?"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-ink-secondary mb-2">
+                Strategy
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant={strategy === "spinoff" ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => setStrategy("spinoff")}
+                >
+                  Spinoff
+                </Button>
+                <Button
+                  type="button"
+                  variant={strategy === "activism" ? "primary" : "secondary"}
+                  size="sm"
+                  onClick={() => setStrategy("activism")}
+                >
+                  Activism
+                </Button>
+              </div>
+            </div>
+
+            {error && (
+              <AlertBanner variant="critical" message={error} />
+            )}
+
+            <div className="flex gap-2 pt-2">
+              <Button
+                variant="primary"
+                size="md"
+                type="submit"
+                disabled={submitting || !name.trim()}
+              >
+                {submitting ? "Creating..." : "Create Experiment"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="md"
+                type="button"
+                onClick={() => router.push("/sandbox")}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      </div>
+    </AppLayout>
   );
 }
 
 export default function NewExperimentPage() {
   return (
-    <Suspense fallback={<div className="text-sm text-gray-500 mt-8">Loading...</div>}>
+    <Suspense
+      fallback={
+        <AppLayout>
+          <div className="p-6">
+            <span className="text-sm text-ink-tertiary">Loading...</span>
+          </div>
+        </AppLayout>
+      }
+    >
       <NewExperimentForm />
     </Suspense>
   );
