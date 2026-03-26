@@ -1,11 +1,44 @@
 "use client";
 
 import { useEffect, useState, useCallback, useMemo } from "react";
+import {
+  AppShell,
+  PageHeader,
+  Stat,
+  AlertBanner,
+  DataTable,
+  EmptyState,
+  Button,
+  ScoreIndicator,
+  StatusBadge,
+} from "@/components/ui";
+import { type Column } from "@/components/ui/DataTable";
+import {
+  LayoutGrid,
+  List,
+  Briefcase,
+  BarChart3,
+  FlaskConical,
+  Settings,
+  RefreshCw,
+} from "lucide-react";
 
-type SortKey = "composite_score" | "filing_date" | "company_name";
-type SortDir = "asc" | "desc";
+// ── Types ────────────────────────────────────────────────────────────
 
 interface Candidate {
+  filing_id: string;
+  company_name: string;
+  ticker: string | null;
+  composite_score: number;
+  event_type: "spinoff" | "activism";
+  form_type: string;
+  sic_division: string | null;
+  mcap_tag: string;
+  scored_at: string;
+  filing_url?: string;
+}
+
+interface ApiCandidate {
   filing_id: string;
   company_name: string;
   ticker: string | null;
@@ -14,80 +47,90 @@ interface Candidate {
   sector: string | null;
   mcap_tag: string;
   filing_date: string;
-  filing_url: string;
-  sic_code: string | null;
+  filing_url?: string;
 }
 
 interface ApiResponse {
-  candidates: Candidate[];
+  candidates: ApiCandidate[];
   row_count: number;
   last_updated: string | null;
 }
 
-function scoreColor(score: number): string {
-  if (score >= 0.75) return "text-green-600 font-semibold";
-  return "text-amber-600 font-semibold";
+// ── Helpers ──────────────────────────────────────────────────────────
+
+const ACTIVISM_FORMS = ["SC 13D", "SC 13G", "DFAN14A", "DEFA14A", "DEFC14A"];
+
+function inferEventType(formType: string): "spinoff" | "activism" {
+  const upper = formType.toUpperCase();
+  return ACTIVISM_FORMS.some((f) => upper.includes(f)) ? "activism" : "spinoff";
+}
+
+function formatDate(value: string | Date): string {
+  const d = value instanceof Date ? value : new Date(value);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function formatMcap(tag: string): string {
   const labels: Record<string, string> = {
-    sub_1b_confirmed: "< $1B",
-    sub_1b_unconfirmed: "< $1B (est.)",
+    sub_1b_confirmed: "< $1B \u2713",
+    sub_1b_unconfirmed: "< $1B",
     above_1b: "> $1B",
   };
   return labels[tag] ?? tag;
 }
 
-function SortArrow({ col, sortKey, sortDir }: { col: SortKey; sortKey: SortKey; sortDir: SortDir }) {
-  if (col !== sortKey) return <span className="ml-1 opacity-30">&#8597;</span>;
-  return <span className="ml-1">{sortDir === "asc" ? "\u25B2" : "\u25BC"}</span>;
+function mapCandidate(c: ApiCandidate): Candidate {
+  const filingDate =
+    typeof c.filing_date === "string"
+      ? c.filing_date
+      : (c.filing_date as unknown as Date).toISOString();
+  return {
+    filing_id: c.filing_id,
+    company_name: c.company_name,
+    ticker: c.ticker,
+    composite_score: c.composite_score,
+    event_type: inferEventType(c.form_type),
+    form_type: c.form_type,
+    sic_division: c.sector,
+    mcap_tag: c.mcap_tag,
+    scored_at: filingDate,
+    filing_url: c.filing_url,
+  };
 }
 
-export default function Home() {
-  const [data, setData] = useState<ApiResponse | null>(null);
+// ── Navigation ───────────────────────────────────────────────────────
+
+const navigation = [
+  { label: "Dashboard", href: "/", icon: <LayoutGrid size={20} /> },
+  { label: "Candidates", href: "/candidates", icon: <List size={20} /> },
+  { label: "Portfolio", href: "/portfolio", icon: <Briefcase size={20} /> },
+  { label: "Analytics", href: "/analytics", icon: <BarChart3 size={20} /> },
+  { label: "Sandbox", href: "/sandbox", icon: <FlaskConical size={20} /> },
+  { label: "Admin", href: "/admin", icon: <Settings size={20} /> },
+];
+
+// ── Page ─────────────────────────────────────────────────────────────
+
+export default function CandidatesDashboard() {
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [refreshedAt, setRefreshedAt] = useState<Date | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("composite_score");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
-
-  const toggleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir(key === "composite_score" ? "desc" : "asc");
-    }
-  };
-
-  const sorted = useMemo(() => {
-    if (!data) return [];
-    return [...data.candidates].sort((a, b) => {
-      let cmp: number;
-      switch (sortKey) {
-        case "composite_score":
-          cmp = a.composite_score - b.composite_score;
-          break;
-        case "filing_date":
-          cmp = a.filing_date.localeCompare(b.filing_date);
-          break;
-        case "company_name":
-          cmp = a.company_name.localeCompare(b.company_name);
-          break;
-      }
-      return sortDir === "asc" ? cmp : -cmp;
-    });
-  }, [data, sortKey, sortDir]);
+  const [sortKey, setSortKey] = useState("composite_score");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [alertDismissed, setAlertDismissed] = useState(false);
 
   const fetchData = useCallback(async () => {
+    setLoading(true);
     try {
       const res = await fetch("/api/candidates");
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json: ApiResponse = await res.json();
-      setData(json);
+      setCandidates(json.candidates.map(mapCandidate));
       setError(null);
-      setRefreshedAt(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Fetch failed");
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -97,107 +140,221 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [fetchData]);
 
-  if (error && !data) {
-    return <p className="text-red-600 mt-8">Error: {error}</p>;
-  }
+  // ── Derived data ─────────────────────────────────────────────────
 
-  if (!data) {
-    return <p className="text-gray-500 mt-8">Loading candidates...</p>;
-  }
+  const sorted = useMemo(() => {
+    return [...candidates].sort((a, b) => {
+      const aVal = a[sortKey as keyof Candidate];
+      const bVal = b[sortKey as keyof Candidate];
+      let cmp: number;
+      if (typeof aVal === "number" && typeof bVal === "number") {
+        cmp = aVal - bVal;
+      } else {
+        cmp = String(aVal ?? "").localeCompare(String(bVal ?? ""));
+      }
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+  }, [candidates, sortKey, sortDir]);
+
+  const highConviction = candidates.filter(
+    (c) => c.composite_score >= 0.75
+  ).length;
+
+  const avgScore = candidates.length
+    ? (
+        candidates.reduce((s, c) => s + c.composite_score, 0) /
+        candidates.length
+      ).toFixed(2)
+    : "\u2014";
+
+  const lastUpdated = candidates.length
+    ? formatDate(
+        candidates.reduce((latest, c) =>
+          c.scored_at > latest.scored_at ? c : latest
+        ).scored_at
+      )
+    : "\u2014";
+
+  const pendingCount = candidates.filter((c) => {
+    const elapsed = Date.now() - new Date(c.scored_at).getTime();
+    return elapsed > 24 * 60 * 60 * 1000;
+  }).length;
+
+  // ── Sort handler ─────────────────────────────────────────────────
+
+  const handleSort = (key: string) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir(key === "composite_score" ? "desc" : "asc");
+    }
+  };
+
+  // ── Columns ──────────────────────────────────────────────────────
+
+  const columns: Column<Candidate>[] = [
+    {
+      key: "company_name",
+      label: "Company",
+      sortable: true,
+      render: (r) => (
+        <div>
+          <span className="text-sm font-medium text-ink-primary">
+            {r.company_name}
+          </span>
+          <span className="block text-xs text-ink-tertiary font-mono">
+            {r.filing_id}
+          </span>
+        </div>
+      ),
+    },
+    {
+      key: "ticker",
+      label: "Ticker",
+      sortable: true,
+      render: (r) => (
+        <span className="font-mono text-sm">{r.ticker ?? "\u2014"}</span>
+      ),
+    },
+    {
+      key: "composite_score",
+      label: "Score",
+      sortable: true,
+      render: (r) => <ScoreIndicator score={r.composite_score} size="sm" />,
+    },
+    {
+      key: "event_type",
+      label: "Type",
+      sortable: true,
+      render: (r) => <StatusBadge variant={r.event_type} />,
+    },
+    {
+      key: "form_type",
+      label: "Form",
+      sortable: true,
+      render: (r) => (
+        <span className="text-xs text-ink-secondary font-mono">
+          {r.form_type}
+        </span>
+      ),
+    },
+    {
+      key: "sic_division",
+      label: "Sector",
+      sortable: true,
+      render: (r) => (
+        <span className="text-sm text-ink-secondary">
+          {r.sic_division ?? "\u2014"}
+        </span>
+      ),
+    },
+    {
+      key: "mcap_tag",
+      label: "Market Cap",
+      sortable: true,
+      render: (r) => (
+        <span className="text-xs text-ink-tertiary">
+          {formatMcap(r.mcap_tag)}
+        </span>
+      ),
+    },
+    {
+      key: "scored_at",
+      label: "Filed",
+      sortable: true,
+      render: (r) => (
+        <span className="text-xs text-ink-tertiary">
+          {formatDate(r.scored_at)}
+        </span>
+      ),
+    },
+    {
+      key: "filing_url",
+      label: "EDGAR",
+      render: (r) =>
+        r.filing_url ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() =>
+              window.open(r.filing_url, "_blank", "noopener,noreferrer")
+            }
+          >
+            View
+          </Button>
+        ) : null,
+    },
+  ];
+
+  // ── Render ───────────────────────────────────────────────────────
 
   return (
-    <div>
-      {/* Header stats */}
-      <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1 mb-4 text-sm text-gray-500">
-        <span>
-          <span className="font-medium text-gray-900">
-            {data.candidates.length}
-          </span>{" "}
-          candidates
-        </span>
-        <span>
-          Audit log entries:{" "}
-          <span className="font-medium text-gray-900">{data.row_count}</span>
-        </span>
-        {data.last_updated && (
-          <span>Last audit: {data.last_updated}</span>
+    <AppShell navigation={navigation}>
+      <div className="relative">
+        {loading && (
+          <div className="absolute top-0 left-0 right-0 h-px bg-signal-mid animate-pulse" />
         )}
-        {refreshedAt && (
-          <span>Refreshed: {refreshedAt.toLocaleTimeString()}</span>
-        )}
-        {error && <span className="text-amber-600">Refresh error: {error}</span>}
-      </div>
 
-      {/* Scrollable table wrapper */}
-      <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
-        <table className="min-w-full text-sm">
-          <thead>
-            <tr className="bg-gray-800 text-white text-left">
-              <th
-                className="sticky-col bg-gray-800 px-4 py-3 font-medium whitespace-nowrap cursor-pointer select-none hover:bg-gray-700 transition-colors"
-                onClick={() => toggleSort("company_name")}
+        <div className="p-6 max-w-7xl">
+          <PageHeader
+            title="Candidates"
+            subtitle="Screened from sub-$1B public equity universe"
+            actions={
+              <Button
+                variant="secondary"
+                size="sm"
+                icon={<RefreshCw size={14} />}
+                onClick={fetchData}
               >
-                Company
-                <SortArrow col="company_name" sortKey={sortKey} sortDir={sortDir} />
-              </th>
-              <th className="px-4 py-3 font-medium">Ticker</th>
-              <th className="px-4 py-3 font-medium">Form</th>
-              <th
-                className="px-4 py-3 font-medium text-right cursor-pointer select-none hover:bg-gray-700 transition-colors"
-                onClick={() => toggleSort("composite_score")}
-              >
-                Score
-                <SortArrow col="composite_score" sortKey={sortKey} sortDir={sortDir} />
-              </th>
-              <th className="px-4 py-3 font-medium">Sector</th>
-              <th className="px-4 py-3 font-medium">Mkt Cap</th>
-              <th
-                className="px-4 py-3 font-medium cursor-pointer select-none hover:bg-gray-700 transition-colors"
-                onClick={() => toggleSort("filing_date")}
-              >
-                Filed
-                <SortArrow col="filing_date" sortKey={sortKey} sortDir={sortDir} />
-              </th>
-              <th className="px-4 py-3 font-medium">EDGAR</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sorted.map((c) => (
-              <tr key={c.filing_id} className="hover:bg-gray-50">
-                <td className="sticky-col bg-white px-4 py-2.5 font-medium whitespace-nowrap">
-                  {c.company_name}
-                </td>
-                <td className="px-4 py-2.5 font-mono text-xs">
-                  {c.ticker ?? "-"}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap">{c.form_type}</td>
-                <td className={`px-4 py-2.5 text-right tabular-nums ${scoreColor(c.composite_score)}`}>
-                  {c.composite_score.toFixed(2)}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap">
-                  {c.sector ?? "-"}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap">
-                  {formatMcap(c.mcap_tag)}
-                </td>
-                <td className="px-4 py-2.5 whitespace-nowrap tabular-nums">
-                  {c.filing_date}
-                </td>
-                <td className="px-4 py-2.5">
-                  <a
-                    href={c.filing_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block rounded bg-gray-800 px-3 py-1 text-xs text-white hover:bg-gray-700 transition-colors"
-                  >
-                    View
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                Refresh
+              </Button>
+            }
+          />
+
+          {/* Stats row */}
+          <div className="grid grid-cols-4 gap-8 mb-6">
+            <Stat label="Total Candidates" value={String(candidates.length)} />
+            <Stat label="High Conviction" value={String(highConviction)} />
+            <Stat label="Avg Score" value={avgScore} />
+            <Stat label="Last Updated" value={lastUpdated} />
+          </div>
+
+          {/* SLA Alert */}
+          {pendingCount > 0 && !alertDismissed && (
+            <div className="mb-6">
+              <AlertBanner
+                variant="warning"
+                message={`${pendingCount} candidate${pendingCount === 1 ? "" : "s"} pending review past 24h SLA`}
+                onDismiss={() => setAlertDismissed(true)}
+              />
+            </div>
+          )}
+
+          {/* Error state */}
+          {error && (
+            <div className="mb-6">
+              <AlertBanner variant="critical" message={`Error: ${error}`} />
+            </div>
+          )}
+
+          {/* Table or Empty */}
+          {!loading && candidates.length === 0 ? (
+            <EmptyState
+              title="No candidates"
+              subtitle="The screening model hasn't surfaced any qualifying names yet."
+            />
+          ) : (
+            <DataTable
+              columns={columns as unknown as Column<Record<string, unknown>>[]}
+              data={sorted as unknown as Record<string, unknown>[]}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={handleSort}
+            />
+          )}
+        </div>
       </div>
-    </div>
+    </AppShell>
   );
 }
