@@ -27,6 +27,7 @@ interface Candidate {
   sic_division: string | null;
   mcap_tag: string;
   scored_at: string;
+  filing_year: number;
   filing_url?: string;
 }
 
@@ -86,6 +87,7 @@ function mapCandidate(c: ApiCandidate): Candidate {
     sic_division: c.sector,
     mcap_tag: c.mcap_tag,
     scored_at: filingDate,
+    filing_year: new Date(filingDate).getFullYear(),
     filing_url: c.filing_url,
   };
 }
@@ -238,6 +240,14 @@ export default function CandidatesDashboard() {
         <span className="text-xs text-ink-tertiary">
           {formatMcap(r.mcap_tag)}
         </span>
+      ),
+    },
+    {
+      key: "filing_year",
+      label: "Year",
+      sortable: true,
+      render: (r) => (
+        <span className="text-xs text-ink-tertiary">{r.filing_year}</span>
       ),
     },
     {
