@@ -1,5 +1,103 @@
 @import "tailwindcss";
 
+/* ── Design Tokens ─────────────────────────────────────────────────── */
+@theme {
+  /* Colors — Surface */
+  --color-surface-base: #FAFAFA;
+  --color-surface-elevated: #FFFFFF;
+  --color-surface-sunken: #F4F4F5;
+
+  /* Colors — Ink */
+  --color-ink-primary: #09090B;
+  --color-ink-secondary: #52525B;
+  --color-ink-tertiary: #A1A1AA;
+  --color-ink-disabled: #D4D4D8;
+
+  /* Colors — Accent */
+  --color-accent-default: #18181B;
+
+  /* Colors — Signal */
+  --color-signal-high: #16A34A;
+  --color-signal-mid: #D97706;
+  --color-signal-low: #DC2626;
+  --color-signal-neutral: #71717A;
+
+  /* Spacing — strict 8px grid */
+  --spacing-0: 0px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+
+  /* Border radius */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  /* Shadows (elevation, not borders) */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08), 0 2px 4px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.10), 0 4px 8px rgba(0, 0, 0, 0.04);
+
+  /* Font families */
+  --font-sans: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", monospace;
+
+  /* Font sizes */
+  --text-xs: 11px;
+  --text-xs--line-height: 16px;
+  --text-xs--letter-spacing: 0.02em;
+
+  --text-sm: 13px;
+  --text-sm--line-height: 20px;
+
+  --text-base: 15px;
+  --text-base--line-height: 24px;
+
+  --text-lg: 18px;
+  --text-lg--line-height: 28px;
+  --text-lg--letter-spacing: -0.01em;
+
+  --text-xl: 24px;
+  --text-xl--line-height: 32px;
+  --text-xl--letter-spacing: -0.02em;
+
+  --text-2xl: 32px;
+  --text-2xl--line-height: 40px;
+  --text-2xl--letter-spacing: -0.03em;
+
+  /* Animation durations */
+  --animate-fast: fast 150ms ease-out;
+  --animate-default: default 200ms ease-out;
+  --animate-slow: slow 300ms ease-out;
+
+  /* Transition timing tokens (used via arbitrary values) */
+  --transition-fast: 150ms;
+  --transition-default: 200ms;
+  --transition-slow: 300ms;
+}
+
+/* ── Utility: transition speeds ───────────────────────────────────── */
+.transition-fast {
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+.transition-default {
+  transition-duration: 200ms;
+  transition-timing-function: ease-out;
+}
+.transition-slow {
+  transition-duration: 300ms;
+  transition-timing-function: ease-out;
+}
+
 /* Sticky first column in horizontally-scrollable table */
 .sticky-col {
   position: sticky;
