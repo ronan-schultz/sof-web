@@ -14,6 +14,7 @@ import {
 } from "@/components/ui";
 import { type Column } from "@/components/ui/DataTable";
 import { RefreshCw } from "lucide-react";
+import CandidateDetailPanel from "@/app/components/CandidateDetailPanel";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -101,6 +102,7 @@ export default function CandidatesDashboard() {
   const [sortKey, setSortKey] = useState("composite_score");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [alertDismissed, setAlertDismissed] = useState(false);
+  const [selectedFilingId, setSelectedFilingId] = useState<string | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -260,9 +262,10 @@ export default function CandidatesDashboard() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() =>
-              window.open(r.filing_url, "_blank", "noopener,noreferrer")
-            }
+            onClick={(e: React.MouseEvent) => {
+              e.stopPropagation();
+              window.open(r.filing_url, "_blank", "noopener,noreferrer");
+            }}
           >
             View
           </Button>
@@ -329,10 +332,20 @@ export default function CandidatesDashboard() {
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={handleSort}
+              onRowClick={(row) =>
+                setSelectedFilingId(
+                  (row as unknown as Candidate).filing_id
+                )
+              }
             />
           )}
         </div>
       </div>
+
+      <CandidateDetailPanel
+        filingId={selectedFilingId}
+        onClose={() => setSelectedFilingId(null)}
+      />
     </AppLayout>
   );
 }

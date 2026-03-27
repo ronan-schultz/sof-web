@@ -15,6 +15,7 @@ interface DataTableProps<T> {
   onSort?: (key: string) => void;
   sortKey?: string;
   sortDir?: "asc" | "desc";
+  onRowClick?: (row: T) => void;
 }
 
 function SortChevron({ active, dir }: { active: boolean; dir?: "asc" | "desc" }) {
@@ -38,6 +39,7 @@ export default function DataTable<T extends Record<string, unknown>>({
   onSort,
   sortKey,
   sortDir,
+  onRowClick,
 }: DataTableProps<T>) {
   return (
     <div className="overflow-x-auto">
@@ -64,7 +66,10 @@ export default function DataTable<T extends Record<string, unknown>>({
           {data.map((row, i) => (
             <tr
               key={i}
-              className="hover:bg-surface-sunken transition-fast border-b border-surface-sunken"
+              onClick={onRowClick ? () => onRowClick(row) : undefined}
+              className={`hover:bg-surface-sunken transition-fast border-b border-surface-sunken ${
+                onRowClick ? "cursor-pointer" : ""
+              }`}
             >
               {columns.map((col) => (
                 <td key={col.key} className="px-4 py-3 text-sm">

@@ -10,3 +10,4 @@ export { default as EmptyState } from "./EmptyState";
 export { default as Stat } from "./Stat";
 export { default as Divider } from "./Divider";
 export { default as Button } from "./Button";
+export { default as SlidePanel } from "./SlidePanel";
