@@ -303,8 +303,16 @@ export default function CandidatesDashboard() {
     setSorts((prev) => {
       const idx = prev.findIndex((s) => s.key === key);
       if (idx >= 0) {
+        const entry = prev[idx];
+        const isDefault = key === "composite_score" ? "desc" : "asc";
+        if (entry.dir !== isDefault) {
+          // Third click: remove from sort chain (unless it's the only one)
+          if (prev.length === 1) return DEFAULT_SORTS;
+          return prev.filter((_, i) => i !== idx);
+        }
+        // Second click: toggle direction
         const updated = [...prev];
-        updated[idx] = { key, dir: updated[idx].dir === "asc" ? "desc" : "asc" };
+        updated[idx] = { key, dir: entry.dir === "asc" ? "desc" : "asc" };
         return updated;
       }
       const defaultDir = key === "composite_score" ? "desc" : "asc";
