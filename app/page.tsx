@@ -63,7 +63,7 @@ interface CandidateFilters {
 
 const ACTIVISM_FORMS = ["SC 13D", "SC 13G", "DFAN14A", "DEFA14A", "DEFC14A"];
 
-const DEFAULT_SORTS: SortEntry[] = [{ key: "composite_score", dir: "desc" }];
+const DEFAULT_SORTS: SortEntry[] = [{ key: "scored_at", dir: "desc" }];
 
 const INITIAL_FILTERS: CandidateFilters = {
   eventTypes: new Set(),
@@ -304,7 +304,7 @@ export default function CandidatesDashboard() {
       const idx = prev.findIndex((s) => s.key === key);
       if (idx >= 0) {
         const entry = prev[idx];
-        const isDefault = key === "composite_score" ? "desc" : "asc";
+        const isDefault = (key === "composite_score" || key === "scored_at") ? "desc" : "asc";
         if (entry.dir !== isDefault) {
           // Third click: remove from sort chain (unless it's the only one)
           if (prev.length === 1) return DEFAULT_SORTS;
@@ -315,7 +315,7 @@ export default function CandidatesDashboard() {
         updated[idx] = { key, dir: entry.dir === "asc" ? "desc" : "asc" };
         return updated;
       }
-      const defaultDir = key === "composite_score" ? "desc" : "asc";
+      const defaultDir = (key === "composite_score" || key === "scored_at") ? "desc" : "asc";
       return [...prev, { key, dir: defaultDir }];
     });
   };
