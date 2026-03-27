@@ -48,20 +48,155 @@ interface DetailRow {
   days_to_positive: number | null;
 }
 
+async function fetchFilingText(filingUrl: string): Promise<string | null> {
+  try {
+    // Fetch the filing index page to find the main document
+    const indexRes = await fetch(filingUrl, {
+      headers: { "User-Agent": "SOF-Web ronanschultz35@gmail.com" },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!indexRes.ok) return null;
+    const indexHtml = await indexRes.text();
+
+    // Find the primary document link (usually the .htm or .txt filing)
+    const docMatch = indexHtml.match(
+      /href="([^"]+\.(?:htm|txt))"[^>]*>(?:[^<]*(?:10-12|10-K|SC 13D|FORM|Registration))/i
+    ) ?? indexHtml.match(/href="([^"]+\.htm)"/i);
+
+    if (!docMatch) return null;
+
+    let docUrl = docMatch[1];
+    if (!docUrl.startsWith("http")) {
+      // Relative URL — resolve against SEC base
+      const base = filingUrl.endsWith("/") ? filingUrl : filingUrl + "/";
+      docUrl = new URL(docUrl, base).toString();
+    }
+
+    const docRes = await fetch(docUrl, {
+      headers: { "User-Agent": "SOF-Web ronanschultz35@gmail.com" },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!docRes.ok) return null;
+    const html = await docRes.text();
+
+    // Strip HTML tags to get plain text, take first 80K chars
+    const text = html
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">")
+      .replace(/&#\d+;/gi, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, 80000);
+
+    return text.length > 200 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractBusinessSection(text: string): string | null {
+  // Find Item 1 Business section, skip TOC matches
+  const patterns = [
+    /Item\s*1[\.\s]*[—\-–\s]+Business\s*([\s\S]*)/i,
+    /ITEM\s*1[\.\s]*[—\-–\s]+BUSINESS\s*([\s\S]*)/i,
+  ];
+  for (const pattern of patterns) {
+    const matches = text.matchAll(new RegExp(pattern, "gi"));
+    for (const m of matches) {
+      const content = m[1]?.trim().slice(0, 4000) ?? "";
+      // Skip TOC entries (have many "Item N." references)
+      const itemRefs = content.slice(0, 500).match(/Item\s*\d+[A-Z]?\./gi);
+      if (itemRefs && itemRefs.length >= 3) continue;
+      if (content.length >= 100) return content.slice(0, 3000);
+    }
+  }
+  return null;
+}
+
+function formatPercent(v: number | null): string {
+  if (v === null) return "N/A";
+  return `${(v * 100).toFixed(1)}%`;
+}
+
 async function generateSummary(row: DetailRow): Promise<string | null> {
   try {
+    // Parse ai_analysis_json if available (from pipeline's filing_analyzer.py)
+    let analysisContext = "";
+    if (row.ai_analysis_json) {
+      try {
+        const analysis = JSON.parse(row.ai_analysis_json);
+        const parts: string[] = [];
+        if (analysis.parent_company)
+          parts.push(`Parent Company: ${analysis.parent_company}`);
+        if (analysis.separation_rationale)
+          parts.push(`Separation Rationale: ${analysis.separation_rationale}`);
+        if (analysis.sic_description)
+          parts.push(`Business: ${analysis.sic_description}`);
+        if (analysis.disclosed_financials) {
+          const fin = analysis.disclosed_financials;
+          const finParts: string[] = [];
+          if (fin.revenue) finParts.push(`Revenue: ${fin.revenue}`);
+          if (fin.ebitda) finParts.push(`EBITDA: ${fin.ebitda}`);
+          if (fin.total_assets) finParts.push(`Total Assets: ${fin.total_assets}`);
+          if (finParts.length) parts.push(`Financials: ${finParts.join(", ")}`);
+        }
+        if (analysis.red_flags?.length)
+          parts.push(`Red Flags: ${analysis.red_flags.join("; ")}`);
+        if (parts.length) analysisContext = parts.join("\n");
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    // Build returns context
+    let returnsContext = "";
+    if (row.ret_30d !== null || row.ret_60d !== null) {
+      const lines = [
+        `Backtest Returns (absolute / excess vs IWM):`,
+        `  30d: ${formatPercent(row.ret_30d)} / ${formatPercent(row.excess_30d)}`,
+        `  90d: ${formatPercent(row.ret_90d)} / ${formatPercent(row.excess_90d)}`,
+        `  180d: ${formatPercent(row.ret_180d)} / ${formatPercent(row.excess_180d)}`,
+        `  270d: ${formatPercent(row.ret_270d)} / ${formatPercent(row.excess_270d)}`,
+      ];
+      if (row.peak_return !== null)
+        lines.push(`  Peak return: ${formatPercent(row.peak_return)} (day ${row.peak_return_day})`);
+      if (row.max_drawdown_270d !== null)
+        lines.push(`  Max drawdown: ${formatPercent(row.max_drawdown_270d)}`);
+      returnsContext = lines.join("\n");
+    }
+
+    // If business_description is weak (<200 chars), try to fetch from EDGAR
+    let businessDesc = row.business_description;
+    if (!businessDesc || businessDesc.length < 200) {
+      const filingUrl = `https://www.sec.gov/Archives/edgar/data/${row.cik}/${row.filing_id.replace(/-/g, "")}/`;
+      const filingText = await fetchFilingText(filingUrl);
+      if (filingText) {
+        const extracted = extractBusinessSection(filingText);
+        if (extracted && extracted.length > (businessDesc?.length ?? 0)) {
+          businessDesc = extracted;
+        }
+      }
+    }
+
     const userContent = [
       `Company: ${row.company_name}`,
       `Ticker: ${row.ticker ?? "Unknown"}`,
       `Form Type: ${row.form_type}`,
       `Filing Date: ${row.filing_date}`,
       `Sector: ${row.sic_division ?? "Unknown"}`,
-      `Market Cap Tag: ${row.mcap_tag}`,
-      `Composite Score: ${row.composite_score.toFixed(2)}`,
-      `Sub-scores: Form=${row.form_type_score.toFixed(2)}, Sector=${row.sector_score.toFixed(2)}, Price=${row.price_score.toFixed(2)}`,
-      row.business_description
-        ? `Business Description: ${row.business_description}`
+      `Market Cap: ${row.mcap_tag}${row.implied_mcap ? ` ($${(row.implied_mcap / 1e6).toFixed(0)}M)` : ""}`,
+      `Composite Score: ${row.composite_score.toFixed(2)} (Form=${row.form_type_score.toFixed(2)}, Sector=${row.sector_score.toFixed(2)}, Price=${row.price_score.toFixed(2)})`,
+      "",
+      businessDesc
+        ? `Business Description (from filing):\n${businessDesc}`
         : "",
+      analysisContext ? `\nAI-Extracted Filing Analysis:\n${analysisContext}` : "",
+      returnsContext ? `\n${returnsContext}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -69,12 +204,19 @@ async function generateSummary(row: DetailRow): Promise<string | null> {
     const completion = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
       temperature: 0.3,
-      max_tokens: 512,
+      max_tokens: 800,
       messages: [
         {
           role: "system",
-          content:
-            "You are an investment analyst assistant. Given company filing data, write a concise 2-3 paragraph summary covering: (1) what the company does, (2) why this filing is significant for investors, (3) key risks or considerations. Be factual and specific. Do not use markdown formatting.",
+          content: `You are a senior equity research analyst writing a brief for a growth equity / special situations fund.
+
+Given SEC filing data, backtest returns, and AI-extracted analysis, write a concise 2-3 paragraph investment summary:
+
+Paragraph 1: What the company does, its sector, and scale. If a spin-off, name the parent and separation rationale.
+Paragraph 2: Investment thesis — why this is interesting. Reference the backtest returns if available (e.g., "the stock returned X% over 90 days post-filing, outperforming IWM by Y%"). Highlight score drivers.
+Paragraph 3: Key risks — red flags from the filing, market cap concerns, sector headwinds, or data gaps.
+
+Be specific and quantitative. Use plain text, no markdown. Write for someone who reads 50 of these a day — lead with what matters.`,
         },
         { role: "user", content: userContent },
       ],
