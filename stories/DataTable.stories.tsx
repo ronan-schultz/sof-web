@@ -26,8 +26,7 @@ export const Default: Story = {
   args: {
     columns: columns as Column<Record<string, unknown>>[],
     data: candidates as unknown as Record<string, unknown>[],
-    sortKey: "composite_score",
-    sortDir: "desc",
+    sorts: [{ key: "composite_score", dir: "desc" }],
   },
 };
 
@@ -39,8 +38,7 @@ export const AllVariants: Story = {
         <DataTable
           columns={columns as Column<Record<string, unknown>>[]}
           data={candidates as unknown as Record<string, unknown>[]}
-          sortKey="composite_score"
-          sortDir="desc"
+          sorts={[{ key: "composite_score", dir: "desc" }]}
         />
       </div>
       <div>
@@ -48,8 +46,7 @@ export const AllVariants: Story = {
         <DataTable
           columns={columns as Column<Record<string, unknown>>[]}
           data={candidates as unknown as Record<string, unknown>[]}
-          sortKey="company_name"
-          sortDir="asc"
+          sorts={[{ key: "company_name", dir: "asc" }]}
         />
       </div>
     </div>
@@ -61,8 +58,7 @@ export const RealData: Story = {
     <DataTable
       columns={columns as Column<Record<string, unknown>>[]}
       data={candidates as unknown as Record<string, unknown>[]}
-      sortKey="composite_score"
-      sortDir="desc"
+      sorts={[{ key: "composite_score", dir: "desc" }]}
       onSort={(key) => console.log("Sort:", key)}
     />
   ),

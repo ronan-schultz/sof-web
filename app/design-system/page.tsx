@@ -7,7 +7,7 @@ import Card from "@/components/ui/Card";
 import ScoreIndicator from "@/components/ui/ScoreIndicator";
 import StatusBadge from "@/components/ui/StatusBadge";
 import MetricCell from "@/components/ui/MetricCell";
-import DataTable, { type Column } from "@/components/ui/DataTable";
+import DataTable, { type Column, type SortEntry } from "@/components/ui/DataTable";
 import AlertBanner from "@/components/ui/AlertBanner";
 import EmptyState from "@/components/ui/EmptyState";
 import Stat from "@/components/ui/Stat";
@@ -99,8 +99,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 // ── Page ─────────────────────────────────────────────────────────────
 export default function DesignSystemPage() {
   const [alertVisible, setAlertVisible] = useState(true);
-  const [sortKey, setSortKey] = useState("composite_score");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [sorts, setSorts] = useState<SortEntry[]>([{ key: "composite_score", dir: "desc" }]);
 
   const columns: Column<Candidate>[] = [
     { key: "company_name", label: "Company", sortable: true },
@@ -125,12 +124,15 @@ export default function DesignSystemPage() {
   ];
 
   const handleSort = (key: string) => {
-    if (sortKey === key) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-    } else {
-      setSortKey(key);
-      setSortDir("desc");
-    }
+    setSorts((prev) => {
+      const idx = prev.findIndex((s) => s.key === key);
+      if (idx >= 0) {
+        const updated = [...prev];
+        updated[idx] = { key, dir: updated[idx].dir === "asc" ? "desc" : "asc" };
+        return updated;
+      }
+      return [...prev, { key, dir: "asc" as const }];
+    });
   };
 
   return (
@@ -287,8 +289,7 @@ export default function DesignSystemPage() {
             <DataTable
               columns={columns as Column<Record<string, unknown>>[]}
               data={candidates as unknown as Record<string, unknown>[]}
-              sortKey={sortKey}
-              sortDir={sortDir}
+              sorts={sorts}
               onSort={handleSort}
             />
           </Card>
