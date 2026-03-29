@@ -56,11 +56,15 @@ export async function GET() {
   try {
     // Latest research_metrics row
     const metricsRows = await query<ResearchMetricsRow>(`
-      SELECT *, run_at::TEXT AS run_at
+      SELECT *, run_at::TEXT AS run_at_text
       FROM research_metrics
       ORDER BY run_at DESC
       LIMIT 1
     `);
+    if (metricsRows.length > 0) {
+      const row = metricsRows[0] as ResearchMetricsRow & { run_at_text: string };
+      row.run_at = row.run_at_text;
+    }
 
     // Funnel counts
     const funnelRows = await query<FunnelRow>(`
