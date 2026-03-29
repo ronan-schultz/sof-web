@@ -7,6 +7,7 @@ import {
   Briefcase,
   BarChart2,
   FlaskConical,
+  TrendingUp,
   Settings,
 } from "lucide-react";
 
@@ -14,6 +15,7 @@ const navigation = [
   { label: "Dashboard", href: "/", icon: <LayoutGrid size={20} /> },
   { label: "Portfolio", href: "/portfolio", icon: <Briefcase size={20} /> },
   { label: "Analytics", href: "/analytics", icon: <BarChart2 size={20} /> },
+  { label: "Research", href: "/research", icon: <TrendingUp size={20} /> },
   { label: "Sandbox", href: "/sandbox", icon: <FlaskConical size={20} /> },
   { label: "Admin", href: "/admin", icon: <Settings size={20} /> },
 ];
