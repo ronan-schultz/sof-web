@@ -125,8 +125,9 @@ export async function GET() {
     });
   } catch (error) {
     console.error("Research API error:", error);
+    const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json(
-      { error: "Failed to fetch research data" },
+      { error: "Failed to fetch research data", detail: message },
       { status: 500 }
     );
   }
